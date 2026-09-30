@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 绘梦师葉子</title>
+<meta name="description" content="AI 绘梦师葉子 —— AIGC 创作者。获奖作品成绩，以及一批免费本地、文件不上传的小工具。">
+<style>
+/* ===== 配色（想换风格只改这里）===== */
+:root{
+  --bg:#f6f7fb;          /* 页面底色 */
+  --card:#ffffff;        /* 卡片底色 */
+  --border:#e4e6ef;      /* 描边 */
+  --text:#22243a;        /* 主文字 */
+  --muted:#7a7d94;       /* 次要文字 */
+  --accent:#1d9e75;      /* 主色：绿（呼应「葉」） */
+  --star:#f0a020;        /* 收藏星色 */
+  --radius:14px;
+  --side:270px;          /* 左侧介绍栏宽度 */
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"PingFang SC","Microsoft YaHei",sans-serif;
+  background:var(--bg);color:var(--text);line-height:1.7;
+  -webkit-font-smoothing:antialiased;padding:0 16px 48px;
+}
+.wrap{max-width:940px;margin:0 auto}
+a{color:inherit;text-decoration:none}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+img{display:block;max-width:100%}
+figure{margin:0}
+
+/* ===== 顶部：左介绍 / 右获奖成绩 ===== */
+.top{display:grid;gap:30px;align-items:start;grid-template-columns:var(--side) 1fr}
+
+/* ---- 左上角：个人介绍 ---- */
+.hero{position:sticky;top:24px;padding-top:22px}
+.hero-top{display:flex;align-items:center;gap:14px}
+.avatar{
+  width:60px;height:60px;flex:0 0 60px;border-radius:17px;
+  background:linear-gradient(135deg,var(--accent),#2fbf90);
+  color:#fff;font-size:28px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 8px 20px rgba(29,158,117,.25);
+}
+.hero-info h1{font-size:22px;font-weight:700;letter-spacing:.5px;line-height:1.25}
+.hero .bio{color:var(--muted);font-size:13.5px;margin-top:16px}
+
+/* ---- 关注公众号 + 二维码 ---- */
+.wx{display:block;width:fit-content;margin-top:15px}
+.hero .link{display:inline-block;font-size:13px;font-weight:600;color:var(--accent);border-bottom:1px solid transparent}
+.hero .link:hover{border-bottom-color:var(--accent)}
+
+/* 二维码：始终「在流内」展开——把下面的内容推下去，绝不覆盖任何东西。
+   默认收起，所以页面刚打开时工具仍在首屏原位，不受影响。 */
+.qr-pop{
+  display:none;
+  width:172px;margin-top:12px;padding:10px 10px 8px;border-radius:13px;
+  background:var(--card);border:1px solid var(--border);
+  box-shadow:0 8px 20px rgba(34,36,58,.10);
+}
+.qr-pop img{width:100%;border-radius:7px}
+.qr-pop .qr-tip{display:block;text-align:center;font-size:11.5px;color:var(--muted);margin-top:6px}
+/* 有鼠标：移到「关注公众号」上自动出现（链接本身不移动，所以不会闪） */
+@media(hover:hover){
+  .wx:hover .qr-pop{display:block}
+}
+/* 触屏：点一下出现 / 点别处收起（JS 切换 .is-open） */
+.wx.is-open .qr-pop{display:block}
+
+/* ---- 右侧：获奖成绩（一排小卡片）---- */
+.works{min-width:0}
+.sec{font-size:17px;font-weight:700;margin:6px 0 14px;padding-left:11px;border-left:4px solid var(--accent);line-height:1.2}
+
+.awards{display:grid;gap:12px;grid-template-columns:repeat(4,1fr)}
+.award{
+  background:var(--card);border:1px solid var(--border);border-radius:12px;
+  overflow:hidden;display:flex;flex-direction:column;
+  transition:border-color .15s,transform .15s,box-shadow .15s;
+}
+.award:hover{border-color:#b9dfd0;transform:translateY(-2px);box-shadow:0 10px 24px rgba(34,36,58,.06)}
+.award .cert{
+  position:relative;display:flex;align-items:center;justify-content:center;
+  height:118px;background:#fbfbfd;border-bottom:1px solid var(--border);overflow:hidden;
+}
+.award .cert img{max-width:100%;max-height:100%;object-fit:contain}
+.award .cert .ph{font-size:11px;color:#a9abc0}
+/* 图片在 → 隐藏占位文字；图片挂掉被移除 → 占位文字露出来 */
+.award .cert:has(img) .ph{display:none}
+.award figcaption{padding:10px 11px 12px;display:flex;flex-direction:column;gap:2px}
+.award .a-name{font-size:12.5px;font-weight:700;color:var(--accent);line-height:1.35}
+.award .a-work{font-size:12px;font-weight:600;line-height:1.4}
+.award .a-meta{font-size:11px;color:#a9abc0;line-height:1.4;margin-top:1px}
+
+/* ===== 下方：工具箱（全宽，紧跟其上，一眼可见）===== */
+.sec-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:32px 0 16px}
+.sec-row .sec{margin:0}
+.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
+
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;position:relative;display:flex;flex-direction:column;gap:8px;
+  transition:border-color .15s,transform .15s,box-shadow .15s;
+}
+.card:hover{border-color:#b9dfd0;transform:translateY(-2px);box-shadow:0 10px 24px rgba(34,36,58,.06)}
+.card .tag{font-size:12px;font-weight:700;color:var(--accent);letter-spacing:.5px}
+.card h3{font-size:16px;font-weight:600}
+.card p{font-size:13px;color:var(--muted);flex:1}
+.card .go{font-size:13px;font-weight:600;color:var(--accent)}
+.card .soon{font-size:12px;color:var(--muted);background:var(--bg);border-radius:7px;padding:4px 10px;width:fit-content}
+
+.tool{cursor:pointer;padding-right:46px}
+.tool[data-live="0"]{cursor:default;opacity:.82}
+.tool[data-live="0"]:hover{transform:none;box-shadow:none;border-color:var(--border)}
+
+.star{
+  position:absolute;top:12px;right:12px;font-size:17px;line-height:1;
+  color:#d6d8e2;padding:6px;border-radius:8px;transition:color .15s,background .15s;
+}
+.star:hover{background:var(--bg)}
+.star.on{color:var(--star)}
+
+.search-bar{display:flex;gap:10px;margin-bottom:16px}
+.search-bar input{
+  flex:1;font:inherit;font-size:14px;color:var(--text);
+  background:var(--card);border:1px solid var(--border);border-radius:11px;
+  padding:12px 15px;outline:none;transition:border-color .15s;
+}
+.search-bar input:focus{border-color:var(--accent)}
+.search-bar input::placeholder{color:#a9abc0}
+.filter{
+  font-size:13px;font-weight:600;color:var(--muted);background:var(--card);
+  border:1px solid var(--border);border-radius:11px;padding:12px 16px;white-space:nowrap;
+  transition:color .15s,border-color .15s,background .15s;
+}
+.filter.on{color:var(--star);border-color:#f4d9a8;background:#fff9ef}
+.empty{text-align:center;color:var(--muted);font-size:14px;padding:34px 0}
+
+/* ===== 页脚 ===== */
+footer{
+  margin-top:48px;padding-top:24px;border-top:1px solid var(--border);
+  text-align:center;color:var(--muted);font-size:12px;line-height:2;
+}
+footer .name{color:var(--text);font-weight:600}
+footer a{color:var(--accent)}
+
+/* ===== 窄屏：改成上下堆叠 ===== */
+@media(max-width:860px){
+  .top{grid-template-columns:1fr;gap:0}
+  .hero{position:static;padding-top:30px}
+  .works{margin-top:28px}
+  .sec{margin-top:0}
+}
+/* ===== 手机 ===== */
+@media(max-width:560px){
+  body{padding:0 14px 40px}
+  .hero{padding-top:24px}
+  .avatar{width:56px;height:56px;flex:0 0 56px;font-size:26px;border-radius:16px}
+  .hero-info h1{font-size:20px}
+  .hero-top{gap:13px}
+  .awards{grid-template-columns:repeat(2,1fr)}
+  .search-bar{flex-wrap:wrap}
+  .filter{width:100%}
+  .sec-row{margin-top:26px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ================= 顶部：左介绍 / 右获奖成绩 ================= -->
+  <div class="top">
+
+    <!-- ---------- 左上角：个人介绍 ---------- -->
+    <aside class="hero">
+      <div class="hero-top">
+        <div class="avatar">葉</div>
+        <div class="hero-info">
+          <h1>AI 绘梦师葉子</h1>
+        </div>
+      </div>
+      <p class="bio">AIGC 创作者，欢迎来到我的个站。这里放我的作品，以及我制作的一批免费本地小工具。</p>
+      <!-- 关注公众号：桌面鼠标悬停浮现二维码；触屏点一下 -->
+      <span class="wx" id="wx">
+        <a class="link" id="wxToggle" href="#">关注公众号 →</a>
+        <span class="qr-pop" id="qrBox">
+          <img src="images/qrcode.jpg" alt="公众号二维码">
+          <span class="qr-tip">扫码关注</span>
+        </span>
+      </span>
+    </aside>
+
+    <!-- ---------- 右侧：获奖成绩（一排）---------- -->
+    <main class="works">
+      <h2 class="sec">获奖成绩</h2>
+      <div class="awards">
+
+        <figure class="award" title="AI 视觉创意大赛（瓦卡奖 VACAT）· 经典 IP 改编影片 · 2024 深圳">
+          <a class="cert" href="images/award-01.jpg" target="_blank" rel="noopener">
+            <img src="images/award-01.jpg" alt="AI 视觉创意大赛（瓦卡奖）优秀奖证书" onerror="this.remove()">
+            <span class="ph">证书</span>
+          </a>
+          <figcaption>
+            <div class="a-name">优秀奖</div>
+            <div class="a-work">《幻太白·逆转》</div>
+            <div class="a-meta">瓦卡奖 VACAT · 2024</div>
+          </figcaption>
+        </figure>
+
+        <figure class="award" title="「我 AI 北京」北京城市形象 AI 创作征集 · 视频竞赛单元 · 2025">
+          <a class="cert" href="images/award-02.jpg" target="_blank" rel="noopener">
+            <img src="images/award-02.jpg" alt="「我 AI 北京」网络人气奖与优秀奖证书" onerror="this.remove()">
+            <span class="ph">证书</span>
+          </a>
+          <figcaption>
+            <div class="a-name">网络人气奖 · 优秀奖</div>
+            <div class="a-work">《听见北京》</div>
+            <div class="a-meta">我 AI 北京 · 2025</div>
+          </figcaption>
+        </figure>
+
+        <figure class="award" title="第十五届北京国际电影节 · AIGC 电影单元中国石化主题赛 · 2025">
+          <a class="cert" href="images/award-03.jpg" target="_blank" rel="noopener">
+            <img src="images/award-03.jpg" alt="第十五届北京国际电影节 AIGC 电影单元 观众最喜爱的影片" onerror="this.remove()">
+            <span class="ph">证书</span>
+          </a>
+          <figcaption>
+            <div class="a-name">观众最喜爱的影片</div>
+            <div class="a-work">《永夜序章》</div>
+            <div class="a-meta">北京国际电影节 · 2025</div>
+          </figcaption>
+        </figure>
+
+        <figure class="award" title="中国台湾光复 80 周年暨祖国统一 AIGC 短片创作大赛 · 2026">
+          <a class="cert" href="images/award-04.jpg" target="_blank" rel="noopener">
+            <img src="images/award-04.jpg" alt="AIGC 短片创作大赛 特别印象奖证书" onerror="this.remove()">
+            <span class="ph">证书</span>
+          </a>
+          <figcaption>
+            <div class="a-name">特别印象奖</div>
+            <div class="a-work">AIGC 短片</div>
+            <div class="a-meta">AIGC 短片大赛 · 2026</div>
+          </figcaption>
+        </figure>
+
+      </div>
+    </main>
+
+  </div><!-- /top -->
+
+  <!-- ================= 下方：工具箱（全宽） ================= -->
+  <section id="tools">
+    <div class="sec-row">
+      <h2 class="sec">工具箱</h2>
+      <button class="filter" id="favFilter" type="button">☆ 只看收藏</button>
+    </div>
+
+    <div class="search-bar">
+      <input id="search" type="search" placeholder="搜索工具，例如：压缩" autocomplete="off">
+    </div>
+
+    <div class="grid" id="toolGrid">
+
+      <!-- 可用工具（data-live="1" 可点击进入） -->
+      <div class="card tool" data-id="img-compress" data-live="1" data-href="tools/img-compress.html"
+           data-kw="图片 压缩 jpg png webp 批量 zip 无损 有损 缩小 体积 配图">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>图片压缩</h3>
+        <p>单张精调 + 批量压缩，可打包 zip。有损 / 无损两种模式，全部浏览器本地完成。</p>
+        <span class="go">打开工具 →</span>
+      </div>
+
+      <div class="card tool" data-id="gif-tool" data-live="1" data-href="tools/gif-tool.html"
+           data-kw="gif 动图 视频 转 压缩 mp4 webm mov 截取 表情包">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">动图</span>
+        <h3>GIF 工具</h3>
+        <p>视频转 GIF、GIF 压缩，可截取片段、压到目标大小，全部浏览器本地完成。</p>
+        <span class="go">打开工具 →</span>
+      </div>
+
+      <!-- 已上线工具 -->
+      <div class="card tool" data-id="prompt-builder" data-live="1" data-href="tools/prompt-builder.html"
+           data-kw="AI 生图 提示词 prompt 绘画 视频 组合 生成 写法 词库 槽位 装配 光位 景别 画幅 风格 影调">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">绘画</span>
+        <h3>AI 生图提示词装配台</h3>
+        <p>1965 条词库 · 按槽位收敛 · 按 9 步装配顺序输出。带光位 / 景别 / 画幅选择、术语悬停解释与冲突校验，一键复制成稿。</p>
+        <span class="go">打开工具 →</span>
+      </div>
+
+      <!-- 占位工具（data-live="0" 暂不可点） -->
+      <div class="card tool" data-id="ai-dict" data-live="0"
+           data-kw="ai 名词 词典 查询 解释 rag lora agent token 术语">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">查询</span>
+        <h3>AI 名词词典</h3>
+        <p>RAG、LoRA、Agent、Token……常见 AI 名词的大白话解释。</p>
+        <span class="soon">整理中</span>
+      </div>
+
+      <div class="card tool" data-id="size" data-live="0"
+           data-kw="尺寸 裁剪 缩放 平台 公众号 小红书 抖音 封面 比例">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>平台尺寸助手</h3>
+        <p>公众号 / 小红书 / 抖音各平台封面与配图尺寸速查、按比例裁切。</p>
+        <span class="soon">整理中</span>
+      </div>
+
+      <div class="card tool" data-id="watermark" data-live="0"
+           data-kw="水印 署名 加水印 批量 图片 版权">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>批量加水印</h3>
+        <p>给多张图统一加水印，位置与透明度可调，全部本地完成。</p>
+        <span class="soon">整理中</span>
+      </div>
+
+    </div>
+    <p class="empty" id="empty" hidden>没有找到工具，换个词试试</p>
+  </section>
+
+  <!-- ================= 页脚 ================= -->
+  <footer>
+    <div class="name">AI 绘梦师葉子</div>
+    <div>所有工具纯本地处理 · 文件不上传 · 断网可用</div>
+    <!-- 备案号下来后，把下面这行注释打开并填上 -->
+    <!-- <div><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">京ICP备00000000号</a></div> -->
+  </footer>
+
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var FAV_KEY = 'yezi_tools_fav';
+  var grid    = document.getElementById('toolGrid');
+  var cards   = Array.prototype.slice.call(grid.querySelectorAll('.tool'));
+  var search  = document.getElementById('search');
+  var favBtn  = document.getElementById('favFilter');
+  var empty   = document.getElementById('empty');
+  var favOnly = false;
+
+  /* ---------- 收藏：存在浏览器本地，不需要登录 ---------- */
+  function loadFav(){
+    try { return JSON.parse(localStorage.getItem(FAV_KEY)) || []; }
+    catch(e){ return []; }
+  }
+  function saveFav(list){
+    try { localStorage.setItem(FAV_KEY, JSON.stringify(list)); } catch(e){}
+  }
+  var favs = loadFav();
+
+  function paintStars(){
+    cards.forEach(function(card){
+      var star = card.querySelector('.star');
+      var on = favs.indexOf(card.dataset.id) > -1;
+      star.textContent = on ? '★' : '☆';
+      star.classList.toggle('on', on);
+    });
+  }
+
+  /* ---------- 筛选：搜索 + 只看收藏 ---------- */
+  function apply(){
+    var q = search.value.trim().toLowerCase();
+    var shown = 0;
+    cards.forEach(function(card){
+      var kw = (card.dataset.kw + ' ' + card.querySelector('h3').textContent).toLowerCase();
+      var hitQ = !q || kw.indexOf(q) > -1;
+      var hitF = !favOnly || favs.indexOf(card.dataset.id) > -1;
+      var show = hitQ && hitF;
+      card.hidden = !show;
+      if (show) shown++;
+    });
+    empty.hidden = shown > 0;
+  }
+
+  /* ---------- 事件 ---------- */
+  cards.forEach(function(card){
+    card.querySelector('.star').addEventListener('click', function(e){
+      e.stopPropagation();
+      var id = card.dataset.id;
+      var i = favs.indexOf(id);
+      if (i > -1) favs.splice(i,1); else favs.push(id);
+      saveFav(favs);
+      paintStars();
+      if (favOnly) apply();
+    });
+
+    card.addEventListener('click', function(){
+      if (card.dataset.live === '1' && card.dataset.href){
+        location.href = card.dataset.href;
+      }
+    });
+  });
+
+  search.addEventListener('input', apply);
+  favBtn.addEventListener('click', function(){
+    favOnly = !favOnly;
+    favBtn.classList.toggle('on', favOnly);
+    favBtn.textContent = favOnly ? '★ 只看收藏' : '☆ 只看收藏';
+    apply();
+  });
+
+  /* ---------- 公众号二维码：桌面靠 CSS 悬停浮现；触屏点一下 ---------- */
+  var wx = document.getElementById('wx');
+  if (wx){
+    document.getElementById('wxToggle').addEventListener('click', function(e){
+      e.preventDefault();
+      wx.classList.toggle('is-open');
+    });
+    // 点别处自动收起，避免触屏上卡着不关
+    document.addEventListener('click', function(e){
+      if (!wx.contains(e.target)) wx.classList.remove('is-open');
+    });
+  }
+
+  paintStars();
+  apply();
+})();
+</script>
+</body>
+</html>

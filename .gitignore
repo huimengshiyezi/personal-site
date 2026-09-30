@@ -1,0 +1,7 @@
+# 只发布站点本体；其余一律不对外（白名单式，默认安全）
+/*
+!/个人站/
+!/_deploy/
+!/README.md
+!/LICENSE
+!/.gitignore
