@@ -58,7 +58,7 @@ writeFileSync(OUT, tpl.replace(MARK, 'window.__LEX__=' + json + ';'), 'utf8');
 
 ```powershell
 cd 本仓库根目录
-node _dev\build-prompt-builder.mjs
+node ..\3-开发脚本\build-prompt-builder.mjs
 ```
 
 > ⚠️ **改完不构建 = 白改。** 浏览器打开的还是旧的成品。
