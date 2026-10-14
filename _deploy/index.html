@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI 绘梦师葉子</title>
+<link rel="icon" href="favicon.ico">
+<link rel="apple-touch-icon" href="favicon.ico">
 <meta name="description" content="AI 绘梦师葉子 —— AIGC 创作者。获奖作品成绩，以及一批免费本地、文件不上传的小工具。">
 <style>
 /* ===== 配色（想换风格只改这里）===== */
@@ -109,6 +111,25 @@ figure{margin:0}
 .card .go{font-size:13px;font-weight:600;color:var(--accent)}
 .card .soon{font-size:12px;color:var(--muted);background:var(--bg);border-radius:7px;padding:4px 10px;width:fit-content}
 
+/* 卡片底部一行：左「打开工具」/ 右「复制链接」 */
+.card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.card .link-btn{
+  font:inherit;font-size:12px;font-weight:600;color:var(--muted);background:none;border:none;
+  padding:4px 7px;margin:-4px -7px;border-radius:7px;white-space:nowrap;
+  transition:color .15s,background .15s;
+}
+.card .link-btn:hover{color:var(--accent);background:var(--bg)}
+.card .link-btn.done{color:var(--accent)}
+
+/* ===== 轻提示（复制成功等）===== */
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(12px);
+  background:rgba(34,36,58,.92);color:#fff;font-size:13px;line-height:1.4;
+  max-width:calc(100% - 32px);padding:11px 18px;border-radius:10px;
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:99;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
 .tool{cursor:pointer;padding-right:46px}
 .tool[data-live="0"]{cursor:default;opacity:.82}
 .tool[data-live="0"]:hover{transform:none;box-shadow:none;border-color:var(--border)}
@@ -161,7 +182,8 @@ footer a{color:var(--accent)}
   .awards{grid-template-columns:repeat(2,1fr)}
   .search-bar{flex-wrap:wrap}
   .filter{width:100%}
-  .sec-row{margin-top:26px}
+  /* ⚠️ 窄屏下 filter 占满宽，若不换行会把「工具箱」标题挤成两行 —— 已实测踩到 */
+  .sec-row{flex-wrap:wrap;margin-top:26px}
 }
 </style>
 </head>
@@ -262,13 +284,75 @@ footer a{color:var(--accent)}
     <div class="grid" id="toolGrid">
 
       <!-- 可用工具（data-live="1" 可点击进入） -->
+      <div class="card tool" data-id="img-batch" data-live="1" data-href="tools/img-batch.html"
+           data-kw="图片 批量 批处理 裁剪 旋转 翻转 改尺寸 缩放 转格式 压缩 加水印 水印 元数据 目标体积 zip 打包">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>图片批处理</h3>
+        <p><b>一个工具顶六个</b>：裁剪 · 旋转翻转 · 改尺寸 · 加水印 · 转格式压缩 · 压到指定体积。每步都有开关，勾哪步做哪步；一批图一次做完打包 ZIP（含透明图转 JPG 补底色、字节级剥元数据）。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
+      </div>
+
+      <div class="card tool" data-id="img-crop" data-live="1" data-href="tools/img-crop.html"
+           data-kw="图片 裁剪 剪切 裁切 比例 1:1 正方形 头像 封面 伸缩框 拖拽 批量 zip 打包">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>图片裁剪</h3>
+        <p>可拖拽的伸缩框 + 8 档常用比例，框内三等分参考线、框外变暗。<b>「每张图单独裁剪」</b>打开后可以逐张精修，也可以整队统一裁；裁剪是像素级搬运，批量裁完打包 ZIP。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
+      </div>
       <div class="card tool" data-id="img-compress" data-live="1" data-href="tools/img-compress.html"
            data-kw="图片 压缩 jpg png webp 批量 zip 无损 有损 缩小 体积 配图">
         <button class="star" type="button" aria-label="收藏">☆</button>
         <span class="tag">图片</span>
         <h3>图片压缩</h3>
         <p>单张精调 + 批量压缩，可打包 zip。有损 / 无损两种模式，全部浏览器本地完成。</p>
-        <span class="go">打开工具 →</span>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
+      </div>
+
+      <div class="card tool" data-id="cover-tool" data-live="1" data-href="tools/cover-tool.html"
+           data-kw="自媒体 封面 首图 配图 21:9 2.35:1 方图 16:9 3:4 9:16 小红书 抖音 画布 预设 尺寸 标题 文字 描边 阴影 水印 字体 导出 png jpg 模板">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>自媒体封面工具</h3>
+        <p><b>7 种画布预设</b>（自媒体 21:9 · 首图 2.35:1 · 方图 1:1 · 16:9 · 小红书 3:4 · 抖音 9:16 · 自定义）· 标题描边 / 阴影 / 位置 · 内置得意黑与阿里巴巴普惠体（无需联网）· 导出 PNG / JPG，可存模板。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
+      </div>
+
+      <div class="card tool" data-id="size" data-live="1" data-href="tools/platform-size.html"
+           data-kw="尺寸 速查 裁剪 缩放 平台 公众号 小红书 抖音 视频号 b站 知乎 微博 头条 快手 封面 首图 次图 头像 比例 一图多出">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>平台尺寸助手</h3>
+        <p>9 个平台 50 条封面 / 配图尺寸速查，可按尺寸裁切、也能一图多出（打包 zip）。尺寸为常见参考值，以平台后台为准。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
+      </div>
+
+      <div class="card tool" data-id="watermark" data-live="1" data-href="tools/batch-watermark.html"
+           data-kw="水印 署名 加水印 批量 图片 版权 文字水印 图片水印 平铺 透明度 旋转 打包 zip">
+        <button class="star" type="button" aria-label="收藏">☆</button>
+        <span class="tag">图片</span>
+        <h3>批量加水印</h3>
+        <p>多张图统一加水印：文字 / 图片水印、九宫格或平铺、透明度与旋转可调，一键打包 zip。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
       </div>
 
       <div class="card tool" data-id="gif-tool" data-live="1" data-href="tools/gif-tool.html"
@@ -277,17 +361,23 @@ footer a{color:var(--accent)}
         <span class="tag">动图</span>
         <h3>GIF 工具</h3>
         <p>视频转 GIF、GIF 压缩，可截取片段、压到目标大小，全部浏览器本地完成。</p>
-        <span class="go">打开工具 →</span>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
       </div>
 
       <!-- 已上线工具 -->
       <div class="card tool" data-id="prompt-builder" data-live="1" data-href="tools/prompt-builder.html"
-           data-kw="AI 生图 提示词 prompt 绘画 视频 组合 生成 写法 词库 槽位 装配 光位 景别 画幅 风格 影调">
+           data-kw="AI 生图 提示词 prompt 绘画 组合 生成 写法 词库 槽位 装配 向导 范本 感受 映射 光位 景别 画幅 风格 影调">
         <button class="star" type="button" aria-label="收藏">☆</button>
         <span class="tag">绘画</span>
         <h3>AI 生图提示词装配台</h3>
-        <p>1965 条词库 · 按槽位收敛 · 按 9 步装配顺序输出。带光位 / 景别 / 画幅选择、术语悬停解释与冲突校验，一键复制成稿。</p>
-        <span class="go">打开工具 →</span>
+        <p><b>向导模式</b>：挑范本 → 答 5 问 → 出稿（「温柔」这类感受会自动翻成柔光 / 低饱和 / 浅景深等具体写法）· 2048 条词库 · 另有 9 步装配的高级模式 · 术语悬停解释与冲突校验，一键复制成稿。</p>
+        <span class="card-foot">
+          <span class="go">打开工具 →</span>
+          <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+        </span>
       </div>
 
       <!-- 占位工具（data-live="0" 暂不可点） -->
@@ -297,24 +387,6 @@ footer a{color:var(--accent)}
         <span class="tag">查询</span>
         <h3>AI 名词词典</h3>
         <p>RAG、LoRA、Agent、Token……常见 AI 名词的大白话解释。</p>
-        <span class="soon">整理中</span>
-      </div>
-
-      <div class="card tool" data-id="size" data-live="0"
-           data-kw="尺寸 裁剪 缩放 平台 公众号 小红书 抖音 封面 比例">
-        <button class="star" type="button" aria-label="收藏">☆</button>
-        <span class="tag">图片</span>
-        <h3>平台尺寸助手</h3>
-        <p>公众号 / 小红书 / 抖音各平台封面与配图尺寸速查、按比例裁切。</p>
-        <span class="soon">整理中</span>
-      </div>
-
-      <div class="card tool" data-id="watermark" data-live="0"
-           data-kw="水印 署名 加水印 批量 图片 版权">
-        <button class="star" type="button" aria-label="收藏">☆</button>
-        <span class="tag">图片</span>
-        <h3>批量加水印</h3>
-        <p>给多张图统一加水印，位置与透明度可调，全部本地完成。</p>
         <span class="soon">整理中</span>
       </div>
 
@@ -331,6 +403,9 @@ footer a{color:var(--accent)}
   </footer>
 
 </div>
+
+<!-- 轻提示（复制链接成功 / 失败） -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 (function(){
@@ -378,6 +453,49 @@ footer a{color:var(--accent)}
     empty.hidden = shown > 0;
   }
 
+  /* ---------- 轻提示 ---------- */
+  var toastEl = document.getElementById('toast');
+  var toastTimer = null;
+  function toast(msg){
+    if (!toastEl) return;
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2000);
+  }
+
+  /* ---------- 复制工具的直达链接 ---------- */
+  // card 上的 data-href 是相对路径，这里补成完整网址：
+  // 线上得到 https://域名/tools/xxx.html，本地双击得到 file:///.../tools/xxx.html
+  function absoluteUrl(href){
+    try { return new URL(href, location.href).href; } catch (e) { return href; }
+  }
+
+  // 兜底：navigator.clipboard 只在安全上下文（https / localhost）可用，
+  // 本地双击（file://）会没有它 —— 用老办法 execCommand 顶上。
+  function legacyCopy(text){
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    document.body.appendChild(ta);
+    ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    document.body.removeChild(ta);
+    return ok;
+  }
+  function copyText(text){
+    if (navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(text).then(
+        function(){ return true; },
+        function(){ return legacyCopy(text); }
+      );
+    }
+    return Promise.resolve(legacyCopy(text));
+  }
+
   /* ---------- 事件 ---------- */
   cards.forEach(function(card){
     card.querySelector('.star').addEventListener('click', function(e){
@@ -389,6 +507,29 @@ footer a{color:var(--accent)}
       paintStars();
       if (favOnly) apply();
     });
+
+    /* 「复制链接」：只给可点开的工具；点了不能跳转（要 stopPropagation） */
+    var copyBtn = card.querySelector('[data-copy]');
+    if (copyBtn){
+      copyBtn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var url = absoluteUrl(card.dataset.href);
+        copyText(url).then(function(ok){
+          if (ok){
+            copyBtn.textContent = '已复制 ✓';
+            copyBtn.classList.add('done');
+            toast('已复制直达链接：' + decodeURI(url));
+            setTimeout(function(){
+              copyBtn.textContent = '复制链接';
+              copyBtn.classList.remove('done');
+            }, 1800);
+          } else {
+            toast('浏览器不让自动复制');
+            window.prompt('请手动复制这个链接：', url);
+          }
+        });
+      });
+    }
 
     card.addEventListener('click', function(){
       if (card.dataset.live === '1' && card.dataset.href){

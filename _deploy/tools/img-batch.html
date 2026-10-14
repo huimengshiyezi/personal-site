@@ -1,0 +1,4030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="图片批处理：裁剪、旋转翻转、改尺寸、加水印、转格式压缩、目标体积，一次搞定一批图，打包 ZIP 下载。全部在浏览器本地完成，文件不上传，断网可用。">
+<title>图片批处理 · 纯本地处理 · 文件不上传</title>
+<style>
+:root{
+  --bg:#f5f7fb; --card:#ffffff; --line:#e3e6f0; --line2:#eef0f7;
+  --text:#1f2340; --muted:#7c819a; --brand:#3f6ef0; --brand2:#eaf1ff;
+  --ok:#0f9d58; --warn:#d97706; --err:#dc2626;
+  --r:14px; --rs:10px;
+  --shadow:0 1px 2px rgba(20,26,60,.05), 0 8px 20px rgba(20,26,60,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent;
+}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 14px 56px}
+h1,h2,h3{margin:0}
+.hidden{display:none !important}
+
+/* ---------- 顶部 ---------- */
+.hero{padding:4px 2px 14px}
+.hero h1{font-size:24px;letter-spacing:.5px}
+.slogan{margin:8px 0 0;font-size:14px;color:var(--brand)}
+.slogan b{background:var(--brand2);border:1px solid #cfe0ff;border-radius:999px;padding:3px 10px;font-weight:700}
+.lead{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.8}
+.steps{margin:10px 0 0;font-size:12.5px;color:var(--muted);background:#fff;border:1px solid var(--line);border-radius:var(--rs);padding:9px 11px;line-height:1.9}
+.steps b{color:var(--text)}
+
+/* ---------- 卡片 ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;margin-bottom:14px}
+.card>h2{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.card>h2 .no{width:20px;height:20px;flex:0 0 20px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.card>h2 .tip{margin-left:auto;font-size:12px;color:var(--muted);font-weight:400}
+.card.block.off{opacity:.62}
+.card.block.off .body{pointer-events:none}
+/* 收起态：只留「编号 + 名称 + 摘要 + 启用 + 箭头」 */
+.card.block.folded>h2{margin-bottom:0}
+.card.block.folded>.body{display:none}
+.fold{border:1px solid var(--line);background:#fbfcff;color:var(--muted);width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:12px;line-height:1;padding:0;flex:none}
+.fold:hover{border-color:var(--brand);color:var(--brand)}
+/* 每块标题栏的「↺ 默认」：与折叠箭头同一档视觉，不抢注意力 */
+.rst{border:1px solid var(--line);background:#fbfcff;color:var(--muted);height:28px;border-radius:8px;cursor:pointer;font-size:12px;line-height:1;padding:0 8px;flex:none;white-space:nowrap}
+.rst:hover{border-color:var(--brand);color:var(--brand)}
+.card.block:not(.folded) .fold .arw{display:inline-block;transform:rotate(90deg)}
+.sum{font-size:12px;color:var(--muted);font-weight:400;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sum b{color:var(--text);font-weight:600}
+
+/* ---------- 裁剪：可拖拽伸缩框 ---------- */
+/* ⚠️ 这里刻意**不加 border-radius**：圆角会把贴边时的手柄和白色框线切掉，
+   用户实测「最右侧框选不到」。padding 8px 是留给手柄向外伸的那 7px 的
+   （`.cbox>i{left:-7px}` 等），保证框贴到画布边缘时手柄仍完整可见、好抓。
+   overflow:hidden 保留 —— 遮罩（box-shadow 0 0 0 9999px）靠它裁。 */
+.cropedit{position:relative;margin-top:10px;padding:8px;border:1px solid var(--line);overflow:hidden;background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;text-align:center;touch-action:none;user-select:none;-webkit-user-select:none}
+.cropedit canvas{display:block;margin:0 auto;max-width:100%;height:auto}
+/* 占位提示盖住**内边距以内**的区域（inset 取负 padding），别盖到留给手柄的那一圈 */
+.cropedit .cph{position:absolute;top:-8px;right:-8px;bottom:-8px;left:-8px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:24px 14px;color:var(--muted);font-size:12.5px;line-height:1.8;background:rgba(255,255,255,.72)}
+/* 没有画布时（没选图 / 预览还没解码完）：占位提示改成**参与布局**。
+   ⚠️ 2026-10-14 用户截图反馈「这里有一行字被盖住了」——
+   实测那时 canvas 是 1×1、.cropedit 只有 19px 高（只剩 padding），而 .cph 是绝对定位的 48px 文字，
+   被 overflow:hidden 裁到只剩上半截。让它回正常流，容器就会撑到文字该有的高度。 */
+.cropedit.nocv .cph{position:static;top:auto;right:auto;bottom:auto;left:auto}
+.cbox{position:absolute;box-sizing:border-box;border:1.5px solid #fff;outline:1px solid rgba(31,35,64,.55);
+  box-shadow:0 0 0 9999px rgba(20,26,60,.45);cursor:move;touch-action:none}
+.cbox::before,.cbox::after{content:"";position:absolute;pointer-events:none;background:rgba(255,255,255,.55)}
+.cbox::before{left:0;right:0;top:33.333%;height:1px;box-shadow:0 0 0 0 transparent}
+.cbox::after{left:0;right:0;top:66.666%;height:1px}
+.cbox>i{position:absolute;width:14px;height:14px;background:#fff;border:1px solid rgba(31,35,64,.55);border-radius:3px}
+.cbox>i[data-h="nw"]{left:-7px;top:-7px;cursor:nwse-resize}
+.cbox>i[data-h="n"]{left:50%;top:-7px;margin-left:-7px;cursor:ns-resize}
+.cbox>i[data-h="ne"]{right:-7px;top:-7px;cursor:nesw-resize}
+.cbox>i[data-h="w"]{left:-7px;top:50%;margin-top:-7px;cursor:ew-resize}
+.cbox>i[data-h="e"]{right:-7px;top:50%;margin-top:-7px;cursor:ew-resize}
+.cbox>i[data-h="sw"]{left:-7px;bottom:-7px;cursor:nesw-resize}
+.cbox>i[data-h="s"]{left:50%;bottom:-7px;margin-left:-7px;cursor:ns-resize}
+.cbox>i[data-h="se"]{right:-7px;bottom:-7px;cursor:nwse-resize}
+.cbox.dis{display:none}
+/* 说明性内容的小折叠条：箭头在文字**前面**（用户要求"三角箭头放在这句话后面"，
+   这里用"箭头 + 文字"同一行的可点条，箭头紧贴句子 —— 整行都可点，点哪都行） */
+.foldhead{display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:7px 0;
+  background:none;border:0;font:inherit;color:var(--text);font-size:13px;font-weight:600;text-align:left;cursor:pointer}
+.foldhead:hover{color:var(--brand)}
+.foldhead .arw{color:var(--muted);font-size:12px;flex:0 0 auto;transition:transform .15s}
+.foldhead[aria-expanded="true"] .arw{transform:rotate(90deg)}
+.foldbody{margin-top:2px}
+.foldbody.hidden{display:none}
+/* 常显但"未启用"的输入区：淡化 + 一句小字，避免用户以为没这项功能 */
+.field.dim{opacity:.55}
+.subnote{font-size:12px;color:var(--muted);margin-left:8px}
+
+/* ---------- 开关 ---------- */
+.sw{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.sw input{width:18px;height:18px;accent-color:var(--brand);margin:0}
+.sw b{font-size:12.5px;color:var(--brand)}
+
+/* ---------- 选图区 ---------- */
+.drop{border:2px dashed #c9d2e8;border-radius:var(--r);background:#fbfcff;padding:22px 14px;text-align:center;cursor:pointer;transition:.16s}
+.drop:hover{border-color:var(--brand);background:var(--brand2)}
+.drop.over{border-color:var(--brand);background:var(--brand2);transform:scale(.995)}
+.drop .ico{font-size:26px;line-height:1;color:var(--brand)}
+.drop .m1{margin-top:8px;font-size:15px;font-weight:600}
+.drop .m2{margin-top:4px;font-size:12.5px;color:var(--muted)}
+.drop input{display:none}
+.bar{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.count{font-size:13px;color:var(--muted)}
+.count b{color:var(--text);font-size:15px}
+.spacer{flex:1}
+
+/* ---------- 缩略图列表 ---------- */
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
+.thumbs:empty{display:none}
+.thumb{position:relative;border:2px solid var(--line);border-radius:var(--rs);overflow:hidden;background:#fff;cursor:pointer;aspect-ratio:1/1}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .no{position:absolute;left:3px;top:3px;background:rgba(31,35,64,.72);color:#fff;font-size:11px;line-height:1;padding:3px 5px;border-radius:6px}
+.thumb .big{position:absolute;left:3px;bottom:3px;background:rgba(217,119,6,.92);color:#fff;font-size:10.5px;line-height:1;padding:3px 5px;border-radius:6px}
+.thumb .x{position:absolute;right:2px;top:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(31,35,64,.66);color:#fff;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.thumb .x:hover{background:var(--err)}
+.thumb.on{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand2)}
+.thumb.on::after{content:"预览中";position:absolute;right:0;bottom:0;left:0;background:var(--brand);color:#fff;font-size:10.5px;text-align:center;line-height:18px}
+.thumb .st{position:absolute;inset:auto 0 0 0;background:rgba(15,157,88,.9);color:#fff;font-size:10.5px;text-align:center;line-height:16px}
+.thumb .st.err{background:rgba(220,38,38,.9)}
+/* 列表（带体积那行） */
+.list{margin-top:12px;border:1px solid var(--line);border-radius:var(--rs);overflow:hidden}
+.list:empty{display:none}
+.row{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px solid var(--line2);font-size:12.5px;cursor:pointer}
+.row:last-child{border-bottom:0}
+.row.on{background:var(--brand2)}
+.row .rn{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .rv{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.row .rv.less{color:var(--ok)}
+.row .rv.more{color:var(--warn)}
+
+/* ---------- 通用控件 ---------- */
+.seg{display:flex;background:var(--line2);border-radius:var(--rs);padding:3px;gap:3px;flex-wrap:wrap}
+.seg button{flex:1 1 auto;border:0;background:transparent;font:inherit;font-size:13px;color:var(--muted);padding:8px 6px;border-radius:7px;cursor:pointer;min-height:36px}
+.seg button.on{background:#fff;color:var(--brand);font-weight:700;box-shadow:0 1px 3px rgba(20,26,60,.12)}
+.field{display:flex;align-items:center;gap:9px;margin:11px 0;min-height:32px;flex-wrap:wrap}
+.field>.k{flex:0 0 82px;font-size:12.5px;color:var(--muted)}
+.field>.v{flex:0 0 54px;text-align:right;font-size:12.5px;color:var(--text);font-variant-numeric:tabular-nums}
+.field input[type=range]{flex:1;min-width:100px;accent-color:var(--brand);height:24px}
+.field input[type=text],.field input[type=number],.field select{min-width:0}
+.field.wide{display:block}
+.field.wide>.k{display:block;margin-bottom:6px}
+input[type=text],input[type=number],select,textarea{
+  font:inherit;font-size:15px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;background:#fcfdff;color:var(--text);width:100%
+}
+input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{outline:0;border-color:var(--brand);background:#fff}
+textarea{resize:vertical;min-height:68px;line-height:1.6}
+input[type=color]{width:42px;height:30px;padding:0;border:1px solid var(--line);border-radius:7px;background:#fff}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-7px;border-radius:50%;background:#fff;border:2px solid var(--brand);box-shadow:0 1px 4px rgba(20,26,60,.22)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--line)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--brand)}
+.btn{font:inherit;font-size:13.5px;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:9px;padding:9px 14px;cursor:pointer;min-height:38px}
+.btn:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.btn.primary:hover:not(:disabled){background:#3560e0;color:#fff}
+.btn.ghost{background:#fbfcff}
+.btn.sm{font-size:12.5px;padding:6px 10px;min-height:32px}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.7;margin:8px 0 0}
+.hint.warn{color:var(--warn)}
+.hint.err{color:var(--err)}
+.hint.ok{color:var(--ok)}
+.hint b{color:var(--text)}
+.sub{border-top:1px dashed var(--line);margin-top:12px;padding-top:12px}
+.sub>.t{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.in2{display:flex;gap:8px;flex-wrap:wrap}
+.in2>label{flex:1;min-width:110px}
+.in2 span{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+.thumb-wm{display:flex;align-items:center;gap:10px;margin-top:10px}
+.thumb-wm img{max-width:64px;max-height:64px;border:1px solid var(--line);border-radius:8px;background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/12px 12px}
+.thumb-wm .n{font-size:12.5px;color:var(--muted);word-break:break-all}
+
+/* ---------- 位置九宫格 ---------- */
+.posrow{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:186px;flex:0 0 auto}
+.pad button{font:inherit;font-size:12px;min-height:36px;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer;padding:0}
+.pad button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.pad.dis{opacity:.35;pointer-events:none}
+.posside{flex:1;min-width:150px}
+
+/* ---------- 预览 ---------- */
+.pvhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pvhead .idx{font-size:13px;color:var(--muted)}
+.pvhead .idx b{color:var(--text)}
+.tabs{display:inline-flex;background:var(--line2);border-radius:9px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;font:inherit;font-size:12.5px;color:var(--muted);padding:6px 12px;border-radius:7px;cursor:pointer;min-height:30px}
+.tabs button.on{background:#fff;color:var(--brand);font-weight:700}
+.pvwrap{display:grid;gap:10px}
+.pvwrap.two{grid-template-columns:1fr 1fr}
+.pvcol>.t{font-size:12.5px;color:var(--muted);margin-bottom:5px}
+.pvbox{border:1px solid var(--line);border-radius:var(--rs);background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;
+  min-height:170px;display:flex;align-items:center;justify-content:center;padding:8px;overflow:hidden}
+.pvbox canvas,.pvbox img{max-width:100%;max-height:420px;display:block;border-radius:4px}
+.pvbox .ph{color:var(--muted);font-size:13px;text-align:center;padding:36px 12px;line-height:1.9}
+.pvinfo{font-size:12.5px;color:var(--muted);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+.pvinfo b{color:var(--text)}
+.diff{font-size:12.5px;margin-top:6px;color:var(--muted)}
+
+/* ---------- 进度 ---------- */
+.prog{height:8px;background:var(--line2);border-radius:999px;overflow:hidden;margin:12px 0 8px}
+.prog>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3f6ef0,#6f9bff);transition:width .18s}
+.pstat{font-size:12.5px;color:var(--muted);min-height:20px;word-break:break-all}
+.msg{display:flex;gap:8px;align-items:flex-start;font-size:13px;border-radius:var(--rs);padding:10px 12px;margin-top:12px;line-height:1.7}
+.msg.ok{background:#eafaf1;border:1px solid #bfe9d3;color:#0b7a45}
+.msg.warn{background:#fff7e8;border:1px solid #f6e0b5;color:#8a5a05}
+.msg.err{background:#fdecec;border:1px solid #f6c9c9;color:#a51f1f}
+.msg .x{margin-left:auto;border:0;background:transparent;color:inherit;font-size:16px;cursor:pointer;line-height:1;padding:0 2px}
+
+/* ---------- 表格 ---------- */
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:8px}
+.tbl th,.tbl td{border:1px solid var(--line);padding:6px 8px;text-align:left}
+.tbl th{background:#f7f9ff;color:var(--muted);font-weight:600}
+.tbl td.y{color:var(--ok);font-weight:700}
+.tbl td.n{color:var(--warn);font-weight:700}
+.tbl tr.hot td{background:#fffdf3}
+.grid2{display:block}
+.dash{border:1px dashed var(--line);border-radius:var(--rs);padding:10px 12px;font-size:12.5px;color:var(--muted);line-height:1.8;margin-top:10px}
+.dash b{color:var(--text)}
+.foot{margin-top:18px;font-size:12px;color:var(--muted);text-align:center;line-height:1.9}
+
+@media (min-width:940px){
+  .grid2{display:grid;grid-template-columns:400px 1fr;gap:14px;align-items:start}
+  .grid2>.card{margin-bottom:0}
+  /* 右侧「效果预览 + 批量导出」吸附：左边滚动改参数时，右边一直看得到效果 */
+  .grid2>.col-right{position:sticky;top:14px}
+}
+@media (max-width:939px){
+  .grid2>.col-right{margin-top:14px}
+}
+@media (max-width:560px){
+  .wrap{padding:14px 10px 44px}
+  .hero h1{font-size:21px}
+  .card{padding:12px;border-radius:12px}
+  .field>.k{flex:0 0 70px;font-size:12px}
+  .field>.v{flex:0 0 46px}
+  .thumbs{grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}
+  .pad{width:100%;max-width:230px}
+  .seg button{font-size:12.5px}
+  .btn{padding:9px 12px}
+  .pvwrap.two{grid-template-columns:1fr}
+  .card>h2 .tip{display:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>图片批处理</h1>
+    <p class="slogan"><b>纯本地处理</b> · 文件不上传 · 断网可用</p>
+    <p class="lead">裁剪、旋转翻转、改尺寸、加水印、转格式压缩、压到指定体积 —— 一批图一次全做完，处理完打包成一个 ZIP 下载。所有运算都在你自己的浏览器里完成，图片不会离开这台设备。</p>
+    <p class="steps">固定执行顺序：<b>① 裁剪 → ② 旋转 / 翻转 → ③ 改尺寸 → ④ 水印 → ⑤ 输出格式与质量</b>。每个步骤上面都有一个「启用」开关，<b>只有打勾的步骤才会执行</b>；每块右上角的 <b>▸</b> 可以展开 / 收起（默认收起，想看哪块展开哪块，右边的效果预览就一直能看到）。</p>
+  </div>
+
+  <!-- ① 选图 -->
+  <section class="card">
+    <h2><span class="no">1</span>选图片<span class="tip">JPG / PNG / WebP</span></h2>
+    <div class="drop" id="drop">
+      <div class="ico">＋</div>
+      <div class="m1">点击这里选择图片，或把图片直接拖进来</div>
+      <div class="m2">可以一次选很多张，也可以把文件夹里的图片一起选中拖进来；还支持直接按 Ctrl + V 粘贴截图</div>
+      <input type="file" id="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+    </div>
+    <div class="bar">
+      <span class="count" id="count">还没有选图片</span>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="clear" disabled>清空全部</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="list" id="list"></div>
+    <div class="dash" id="exifinfo">EXIF 自动摆正：还没有图片。选中一张手机竖拍的照片后，这里会显示它的方向信息。</div>
+    <div class="msg warn hidden" id="bigmsg"><span id="bigtxt"></span><button class="x" data-dismiss="bigmsg">×</button></div>
+    <div class="msg hidden" id="msg"><span id="msgtxt"></span><button class="x" data-dismiss="msg">×</button></div>
+  </section>
+
+  <div class="grid2">
+    <!-- 左：五个步骤 -->
+    <div>
+
+      <section class="card block" id="card-crop">
+        <h2><span class="no">2</span>裁剪
+          <span class="sum" id="sum-crop"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="cropOn"><span>启用</span></label>
+          <button type="button" class="rst" id="rst-crop" title="把这一块恢复出厂设置（并把「启用」关掉）">↺ 默认</button>
+          <button type="button" class="fold" id="fold-crop" aria-expanded="false" title="展开 / 收起"><span class="arw">▸</span></button>
+        </h2>
+        <div class="body">
+          <div class="seg" id="cropMode">
+            <button type="button" data-v="box" class="on">拖动裁剪框</button>
+            <button type="button" data-v="edge">四周各裁掉 N 像素</button>
+          </div>
+
+          <div id="cropBox">
+            <div class="field wide" style="margin-top:12px">
+              <span class="k">固定比例</span>
+              <div class="seg" id="cropRatio">
+                <button type="button" data-v="orig" class="on">原图比例</button>
+                <button type="button" data-v="1:1">1 : 1</button>
+                <button type="button" data-v="3:4">3 : 4</button>
+                <button type="button" data-v="4:3">4 : 3</button>
+                <button type="button" data-v="16:9">16 : 9</button>
+                <button type="button" data-v="9:16">9 : 16</button>
+                <button type="button" data-v="21:9">21 : 9</button>
+                <button type="button" data-v="custom">自定义</button>
+              </div>
+            </div>
+            <div class="field hidden" id="cropCustomWrap">
+              <span class="k">自定义比例</span>
+              <div class="in2" style="flex:1">
+                <label><span>宽</span><input type="number" id="cropCw" min="1" max="9999" value="4"></label>
+                <label><span>高</span><input type="number" id="cropCh" min="1" max="9999" value="5"></label>
+              </div>
+            </div>
+
+            <div class="cropedit" id="cropedit">
+              <canvas id="cropcv"></canvas>
+              <div class="cbox" id="cropcbox">
+                <i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i>
+                <i data-h="w"></i><i data-h="e"></i>
+                <i data-h="sw"></i><i data-h="s"></i><i data-h="se"></i>
+              </div>
+              <div class="cph" id="cropph">选一张图片后，这里会出现可以拖动、可以拉伸的裁剪框</div>
+            </div>
+            <div class="bar" style="margin-top:8px">
+              <span class="hint" style="margin:0" id="cropInfo">拖动框内 = 移动；拖 8 个小方块 = 缩放。比例锁在选定值上，框不会跑出画面。</span>
+              <span class="spacer"></span>
+              <button class="btn ghost sm" id="cropCenter" type="button">居中</button>
+              <button class="btn ghost sm" id="cropReset" type="button">重置</button>
+              <button class="btn ghost sm hidden" id="cropUseAll" type="button">覆盖全部</button>
+            </div>
+          </div>
+
+          <div id="cropEdge" class="hidden">
+            <div class="field"><span class="k">裁掉多少</span><input type="range" id="cropEdgePx" min="0" max="30" step="1" value="2" data-unit="%"><span class="v" id="cropEdgePx-v">2%</span></div>
+            <div class="field"><span class="k">或填像素</span><input type="number" id="cropEdgeNum" min="0" max="99999" value="0" step="1" style="max-width:140px"><span style="font-size:12.5px;color:var(--muted)">像素（填 0 表示用上面那个百分比）</span></div>
+            <p class="hint">四周均匀裁掉一圈，适合去掉截图边框、水印边角、扫描件黑边。填「0」就用上面的百分比（按图片短边算）。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card block" id="card-rot">
+        <h2><span class="no">3</span>旋转 / 翻转
+          <span class="sum" id="sum-rot"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="rotOn"><span>启用</span></label>
+          <button type="button" class="rst" id="rst-rot" title="把这一块恢复出厂设置（并把「启用」关掉）">↺ 默认</button>
+          <button type="button" class="fold" id="fold-rot" aria-expanded="false" title="展开 / 收起"><span class="arw">▸</span></button>
+        </h2>
+        <div class="body">
+          <div class="field wide">
+            <span class="k">转 90° 的整数倍</span>
+            <div class="seg" id="rot90">
+              <button type="button" data-v="0" class="on">不转</button>
+              <button type="button" data-v="90">顺 90°</button>
+              <button type="button" data-v="180">180°</button>
+              <button type="button" data-v="270">顺 270°</button>
+            </div>
+          </div>
+          <div class="field"><span class="k">任意角度</span><input type="range" id="rotAngle" min="-180" max="180" step="1" value="0" data-unit="°"><span class="v" id="rotAngle-v">0°</span></div>
+          <div class="field"><span class="k">空白处底色</span><input type="color" id="rotBg" value="#ffffff"><span class="v" id="rotBg-v">白色</span></div>
+          <p class="hint">任意角度转完，四个角会多出空白，用「空白处底色」填上（想留透明就选白色并把输出格式设成 PNG / WebP）。</p>
+          <div class="sub">
+            <label class="sw"><input type="checkbox" id="flipH"><span>水平翻转（左右镜像）</span></label>
+            <label class="sw" style="margin-top:8px"><input type="checkbox" id="flipV"><span>垂直翻转（上下镜像）</span></label>
+          </div>
+          <div class="dash" id="exifNote">
+            <b>关于「按 EXIF 自动摆正」：</b>手机竖着拍的照片，文件里存的其实是「横着躺 + 一个旋转标记（EXIF 方向）」。现在的浏览器解码时会先按这个标记把画面摆正，这个工具用的就是浏览器解码后的画面，所以<b>正常情况打开就已经是正的</b>，不需要额外操作（用 IE 或者 2019 年以前的老浏览器才会躺倒，那种情况请在第 3 步手动转一下）。<br>
+            选中一张照片后，上面那块提示会告诉你它的 EXIF 方向值，以及实测解码出来的宽高有没有被摆正 —— 这是这个工具自己比对出来的结果，不是你随便看到的一句说明。
+          </div>
+        </div>
+      </section>
+
+      <section class="card block" id="card-size">
+        <h2><span class="no">4</span>改尺寸
+          <span class="sum" id="sum-size"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="sizeOn"><span>启用</span></label>
+          <button type="button" class="rst" id="rst-size" title="把这一块恢复出厂设置（并把「启用」关掉）">↺ 默认</button>
+          <button type="button" class="fold" id="fold-size" aria-expanded="false" title="展开 / 收起"><span class="arw">▸</span></button>
+        </h2>
+        <div class="body">
+          <div class="field wide">
+            <span class="k">怎么改</span>
+            <div class="seg" id="sizeMode">
+              <button type="button" data-v="long" class="on">按长边</button>
+              <button type="button" data-v="short">按短边</button>
+              <button type="button" data-v="wh">指定宽 × 高</button>
+              <button type="button" data-v="pct">按百分比</button>
+              <button type="button" data-v="fit">装在框内</button>
+            </div>
+          </div>
+          <div class="field" id="sizeLongWrap"><span class="k">长边不超过</span><input type="number" id="sizeLong" min="16" max="30000" value="1920" style="max-width:140px"><span style="font-size:12.5px;color:var(--muted)">像素</span></div>
+          <div class="field hidden" id="sizeShortWrap"><span class="k">短边不超过</span><input type="number" id="sizeShort" min="16" max="30000" value="1080" style="max-width:140px"><span style="font-size:12.5px;color:var(--muted)">像素</span></div>
+          <div class="field hidden" id="sizeWhWrap">
+            <span class="k">宽 × 高</span>
+            <div class="in2" style="flex:1">
+              <label><span>宽（像素）</span><input type="number" id="sizeW" min="1" max="30000" value="1080"></label>
+              <label><span>高（像素）</span><input type="number" id="sizeH" min="1" max="30000" value="1080"></label>
+            </div>
+          </div>
+          <div class="field hidden" id="sizePctWrap"><span class="k">缩放比例</span><input type="number" id="sizePct" min="1" max="1000" value="50" style="max-width:140px"><span style="font-size:12.5px;color:var(--muted)">%</span></div>
+          <div class="field hidden" id="sizeFitWrap">
+            <span class="k">框内尺寸</span>
+            <div class="in2" style="flex:1">
+              <label><span>框宽（像素）</span><input type="number" id="sizeFitW" min="1" max="30000" value="1080"></label>
+              <label><span>框高（像素）</span><input type="number" id="sizeFitH" min="1" max="30000" value="1080"></label>
+            </div>
+          </div>
+          <div class="field wide">
+            <span class="k">重采样质量</span>
+            <div class="seg" id="sizeQuality">
+              <button type="button" data-v="high" class="on">高（最清楚，稍慢）</button>
+              <button type="button" data-v="medium">中</button>
+              <button type="button" data-v="low">快（最省时间）</button>
+            </div>
+          </div>
+          <label class="sw"><input type="checkbox" id="sizeNoUp" checked><span>不放大（原图比目标小就保持原样）</span></label>
+          <p class="hint" id="sizeHint">按长边 / 按短边 / 装在框内，这几种模式本来就只会缩、不会放大，不存在「放不放大」的问题。</p>
+        </div>
+      </section>
+
+      <section class="card block" id="card-wm">
+        <h2><span class="no">5</span>水印
+          <span class="sum" id="sum-wm"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="wmOn"><span>启用</span></label>
+          <button type="button" class="rst" id="rst-wm" title="把这一块恢复出厂设置（并把「启用」关掉）">↺ 默认</button>
+          <button type="button" class="fold" id="fold-wm" aria-expanded="false" title="展开 / 收起"><span class="arw">▸</span></button>
+        </h2>
+        <div class="body">
+          <!-- 只做「加水印」（文字水印 / 图片水印）。原来还有个「标题文字」模式，
+               用户反馈批量写标题很少用，已整个删掉（DOM / 状态 / 渲染 / 文案一起清）。 -->
+          <div id="wmSign">
+            <div class="seg" id="wmType">
+              <button type="button" data-v="text" class="on">文字水印</button>
+              <button type="button" data-v="image">图片水印</button>
+            </div>
+            <div id="wmTextWrap">
+              <div class="field wide" style="margin-top:12px">
+                <span class="k">水印文字</span>
+                <input type="text" id="wmText" value="" placeholder="例如：AI 绘梦师葉子" autocomplete="off" spellcheck="false">
+              </div>
+              <div class="field"><span class="k">字号</span><input type="range" id="wmSize" min="1" max="30" step="1" value="5" data-unit="%"><span class="v" id="wmSize-v">5%</span></div>
+              <div class="field"><span class="k">颜色</span><input type="color" id="wmColor" value="#ffffff"><span class="v" id="wmColor-v">白色</span></div>
+            </div>
+            <div id="wmImageWrap" class="hidden">
+              <div class="field wide" style="margin-top:12px">
+                <span class="k">水印图片</span>
+                <button class="btn ghost sm" id="wmPick" type="button">选择一张图片</button>
+                <input type="file" id="wmFile" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="display:none">
+              </div>
+              <div class="thumb-wm hidden" id="wmBox">
+                <img id="wmPrev" alt="水印图片预览">
+                <span class="n" id="wmName"></span>
+              </div>
+              <p class="hint">建议用<strong>透明底的 PNG</strong>（比如已经去掉背景的 logo），贴在照片上不会带白底方块。</p>
+              <div class="field"><span class="k">大小</span><input type="range" id="wmScale" min="1" max="100" step="1" value="18" data-unit="%"><span class="v" id="wmScale-v">18%</span></div>
+            </div>
+            <div class="field"><span class="k">不透明度</span><input type="range" id="wmAlpha" min="5" max="100" step="1" value="45" data-unit="%"><span class="v" id="wmAlpha-v">45%</span></div>
+            <div class="field"><span class="k">旋转角度</span><input type="range" id="wmRot" min="-180" max="180" step="1" value="0" data-unit="°"><span class="v" id="wmRot-v">0°</span></div>
+          </div>
+
+          <div class="sub">
+            <div class="t">放在哪里</div>
+            <div class="posrow">
+              <div class="pad" id="pad">
+                <button type="button" data-v="tl">左上</button>
+                <button type="button" data-v="tc">上中</button>
+                <button type="button" data-v="tr">右上</button>
+                <button type="button" data-v="ml">左中</button>
+                <button type="button" data-v="mc">正中</button>
+                <button type="button" data-v="mr">右中</button>
+                <button type="button" data-v="bl">左下</button>
+                <button type="button" data-v="bc">下中</button>
+                <button type="button" data-v="br" class="on">右下</button>
+              </div>
+              <div class="posside">
+                <label class="sw"><input type="checkbox" id="wmTile"><span>平铺整张图</span></label>
+                <p class="hint" id="tileHint">勾上以后水印会斜着铺满画面（勾上后九宫格位置就不起作用了）。</p>
+                <div class="field" style="margin-bottom:0"><span class="k">边距</span><input type="range" id="wmMargin" min="0" max="20" step="1" value="3" data-unit="%"><span class="v" id="wmMargin-v">3%</span></div>
+              </div>
+            </div>
+            <p class="hint">字号 / 大小 / 边距都是<strong>按图片短边的百分比</strong>算的，所以大图小图出来的效果一样，不用每张重设。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="card block" id="card-out">
+        <h2><span class="no">6</span>输出格式与质量
+          <span class="sum" id="sum-out"></span>
+          <label class="sw" style="margin-left:auto"><input type="checkbox" id="outOn"><span>启用</span></label>
+          <button type="button" class="rst" id="rst-out" title="把这一块恢复出厂设置（并把「启用」关掉）">↺ 默认</button>
+          <button type="button" class="fold" id="fold-out" aria-expanded="false" title="展开 / 收起"><span class="arw">▸</span></button>
+        </h2>
+        <div class="body">
+          <div class="field wide">
+            <span class="k">目标格式</span>
+            <div class="seg" id="outFmt">
+              <button type="button" data-v="keep" class="on">保持原格式</button>
+              <button type="button" data-v="jpeg">JPG</button>
+              <button type="button" data-v="png">PNG</button>
+              <button type="button" data-v="webp">WebP</button>
+            </div>
+          </div>
+          <div class="field" id="outQWrap"><span class="k">画质</span><input type="range" id="outQ" min="40" max="100" step="1" value="85" data-unit=""><span class="v" id="outQ-v">85</span></div>
+          <p class="hint" id="outQHint">画质只对 JPG / WebP 生效，数字越高越清楚、文件越大。40 ~ 100。</p>
+          <div class="sub">
+<div class="sub">
+            <button type="button" class="foldhead" id="fmtFmtHead" aria-expanded="false">
+              <span>哪些组合是无损的（很重要，别被「无损」两个字骗了）</span><span class="arw" id="fmtFmtArw">▸</span>
+            </button>
+            <div class="foldbody hidden" id="fmtFmtBody">
+              <table class="tbl" id="fmtTbl">
+                <tr><th>原格式 → 目标格式</th><th>画面改过之后（裁剪 / 旋转 / 改尺寸 / 加水印）</th><th>画面原封不动时</th></tr>
+                <tr data-row="png-png"><td>PNG → PNG</td><td class="y">无损</td><td class="y">无损</td></tr>
+                <tr data-row="png-webp"><td>PNG → WebP</td><td class="n">有损</td><td class="n">有损</td></tr>
+                <tr data-row="png-jpg"><td>PNG → JPG</td><td class="n">有损</td><td class="n">有损</td></tr>
+                <tr data-row="jpg-jpg"><td>JPG → JPG</td><td class="n">有损</td><td class="y">无损</td></tr>
+                <tr data-row="jpg-png"><td>JPG → PNG</td><td class="y">不新增损失</td><td class="n">会重编码（不改格式才能不重编码）</td></tr>
+                <tr data-row="jpg-webp"><td>JPG → WebP</td><td class="n">有损</td><td class="n">有损</td></tr>
+                <tr data-row="webp-webp"><td>WebP → WebP</td><td class="n">有损</td><td class="y">无损</td></tr>
+                <tr data-row="webp-jpg"><td>WebP → JPG</td><td class="n">有损</td><td class="n">有损</td></tr>
+                <tr data-row="webp-png"><td>WebP → PNG</td><td class="y">不新增损失</td><td class="n">会重编码（不改格式才能不重编码）</td></tr>
+              </table>
+              <p class="hint" id="fmtFootnote">
+                <b>「画面原封不动时」这一列</b>要说清两件事：① 只有<b>目标格式 = 原格式</b>（PNG→PNG / JPG→JPG / WebP→WebP）且你勾了「剥掉元数据」时，才是<b>字节级</b>剥离、一个像素都不重编码；② 只要你把格式换成别的（比如 JPG → PNG），就必须重编码一次 —— 那时 PNG 只是不再新增损失，救不回已丢的细节。<br>
+                <b>裁剪</b>、<b>90° / 180° / 270° 旋转</b>、<b>翻转</b>都是像素级搬运、不重采样 → 配 PNG 输出<b>不新增损失</b>；
+                <b>改尺寸</b>（重采样）、<b>任意角度旋转</b>、<b>加水印</b>（重绘像素）这一环是有损的。
+                而如果原图本来就是 JPG / WebP，它在被压缩那一刻就已经损失过，后面无论做什么都救不回来（只是「不再新增」而已）。
+              </p>
+              <p class="hint" id="fmtNote"></p>
+            </div>
+          </div>
+            <label class="sw"><input type="checkbox" id="metaStrip"><span>剥掉元数据（EXIF / 拍摄参数 / 定位 / 备注）</span></label>
+            <p class="hint">JPG 会丢掉 APPn / 注释段，PNG 会丢掉 tEXt / zTXt / iTXt / tIME / eXIf，WebP 会丢掉 EXIF / XMP 块。<b>这个动作本身不损失画质</b>；注意丢掉的也包括拍摄时间、相机型号、GPS 定位这些信息。</p>
+          </div>
+          <div class="sub">
+            <label class="sw"><input type="checkbox" id="targetOn"><span>压到指定体积以内</span></label>
+            <!-- 体积输入框**常显**（用户反馈：不勾就看不见，不知道有这项）。未勾选时淡化 + 一句提示 -->
+            <div class="field" id="targetWrap" style="margin-top:8px">
+              <span class="k">目标体积</span>
+              <input type="number" id="targetVal" min="1" max="500000" value="200" style="max-width:140px">
+              <select id="targetUnit" style="width:90px;flex:0 0 90px"><option value="KB">KB</option><option value="MB">MB</option></select>
+              <span class="subnote" id="targetNote">勾上左边的开关才生效</span>
+            </div>
+            <p class="hint" id="targetHint">开启后会自动来回试画质（画质不够就继续降），尽量压到不超过这个体积。<b>万一实在压不到</b>（比如图太复杂或者目标太小），会保留压出来的最小结果，并明确告诉你「已压到 X KB，未能达到目标」，不会偷偷给你一个不符合预期的文件。</p>
+          </div>
+          <div class="sub">
+            <label class="sw"><input type="checkbox" id="bgOn"><span>透明图转 JPG 时，用这个颜色替换透明处</span></label>
+            <div class="field" id="bgWrap"><span class="k">背景色</span><input type="color" id="bgColor" value="#ffffff"><span class="v" id="bgColor-v">白色</span></div>
+            <p class="hint" id="bgHint">JPG 不支持透明。不勾这个开关时，透明处默认填<b>白色</b>；勾上就能自己选颜色（例如电商图想要浅灰底）。</p>
+          </div>
+          <!-- 无损说明：太长，做成可折叠。**默认折叠**，折叠时只留这一行；
+               它排在上面三个选项**之后**，所以折叠状态下那三个选项就直接出现。
+               箭头放在句子**后面**（用户原话："把展开的三角箭头放在…这句话后面"）。 -->
+                  </div>
+      </section>
+
+    </div>
+
+    <!-- 右：预览 + 导出（桌面端吸附：左边滚动改参数时右边一直看得到效果） -->
+    <div class="col-right">
+
+      <section class="card">
+        <h2>效果预览<span class="tip">导出的是原图分辨率</span></h2>
+        <div class="pvhead">
+          <span class="idx" id="pvindex">第 0 / 共 0 张</span>
+          <span class="tabs" id="pvTabs">
+            <button type="button" data-v="both" class="on">对比</button>
+            <button type="button" data-v="before">原图</button>
+            <button type="button" data-v="after">处理后</button>
+          </span>
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="prev" disabled>上一张</button>
+          <button class="btn ghost sm" id="next" disabled>下一张</button>
+        </div>
+        <div class="pvwrap two" id="pvwrap">
+          <div class="pvcol" id="pvcolBefore">
+            <div class="t">处理前</div>
+            <div class="pvbox"><div class="ph" id="pvphBefore">还没有选图片</div><img id="pvBefore" class="hidden" alt="处理前"></div>
+          </div>
+          <div class="pvcol" id="pvcolAfter">
+            <div class="t">处理后</div>
+            <div class="pvbox"><div class="ph" id="pvphAfter">先在左边打开要执行的步骤</div><img id="pvAfter" class="hidden" alt="处理后"></div>
+          </div>
+        </div>
+        <div class="pvinfo" id="pvinfo"></div>
+        <p class="hint">预览是缩小显示的，<b>长宽比和裁剪范围跟导出一模一样</b>（几何是按预览画布的实际尺寸算的，不是拿原图尺寸硬套）。预览时水印会缩到屏幕上（不然大图预览里小水印根本看不见）—— 导出比例是准的。<b>每改一次参数都会重新算一次这一张</b>，所以看到的就是真正会导出的效果。</p>
+      </section>
+
+      <section class="card">
+        <h2>批量导出<span class="tip">一张一张按顺序处理</span></h2>
+        <div class="field wide">
+          <span class="k">输出文件名后缀</span>
+          <input type="text" id="suffix" value="_out" placeholder="_out" autocomplete="off" spellcheck="false" maxlength="24">
+        </div>
+        <p class="hint" id="suffixHint">例如原图 <b>照片.jpg</b> → 输出 <b>照片_out.jpg</b>；后缀可以改成你自己喜欢的（留空就是不加后缀，重名会自动加序号）。</p>
+
+        <div class="bar" style="margin-top:14px">
+          <button class="btn primary" id="runAll" disabled>一键处理全部 → 打包下载 ZIP</button>
+          <button class="btn ghost" id="runOne" disabled>只下载当前这张</button>
+          <button class="btn ghost hidden" id="cancel">取消</button>
+          <button class="btn ghost" id="resetAll" title="把 5 个步骤、后缀、折叠状态全部恢复出厂设置，并清除本机记住的设置">全部恢复默认</button>
+        </div>
+
+        <div class="prog"><i id="bar"></i></div>
+        <div class="pstat" id="pstat">还没有开始处理。</div>
+        <div class="msg hidden" id="emsg"><span id="emsgtxt"></span><button class="x" data-dismiss="emsg">×</button></div>
+
+        <div class="dash" id="summary">批量处理结束后，这里会显示：总张数、成功 / 失败数，以及处理前 → 处理后的总体积变化（省了百分之多少）。</div>
+
+        <p class="hint" style="margin-top:14px">图片是<b>一张一张</b>处理的：解码一张、处理完立刻释放内存，再处理下一张，不会一次性把所有图都塞进内存。处理大图（几千万像素）会比较慢，页面会实时显示进度，请不要关掉这个页面。</p>
+      </section>
+
+    </div>
+  </div>
+
+  <p class="foot">图片批处理 · 纯前端单文件工具 · 双击即用<br>所有处理都在本机浏览器完成：不联网、不上传、不留服务器记录</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   图片批处理 —— 纯本地单文件工具
+   设计要点：
+   1) 顺序处理：任何时候只解码 1 张图，画完立刻释放 canvas / ImageBitmap
+   2) 固定流水线：解码 → 裁剪 → 旋转翻转 → 改尺寸 → 水印/文字 → 编码
+      每个步骤一个「启用」开关，关掉的整段跳过、不碰画布
+   3) 缩略图在导入时生成（160px dataURL，列表和预览的「处理前」都用它），列表不保留大图
+   4) 预览单独用 ≤1000px 的小画布跑同一套处理代码，参数一改就重算
+   5) 导出：复用 store 模式 ZIP（CRC32 + 本地文件头 + 中央目录）
+   6) 纯计算函数集中放在 PURE-CORE 标记区内，可被自检脚本抽出来单测
+   ===================================================================== */
+
+var THUMB_SIDE = 160;
+var PREVIEW_SIDE = 1000;
+var BIG_SIDE = 4000;
+var FONT_STACK = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",-apple-system,"Segoe UI",sans-serif';
+var OK_TYPE = { 'image/jpeg':1, 'image/png':1, 'image/webp':1 };
+var MAX_ZIP_BYTES = 1200 * 1024 * 1024;
+var PREVIEW_CACHE_MAX = 24 * 1024 * 1024;
+var QUALITY_MIN = 40, QUALITY_MAX = 100;
+/* 预览专用：字号按短边百分比算，但放大图缩到屏幕后小水印会看不见，
+   所以给一个下限（按预览宽度算）。导出时用 0，普通模式=严格按短边百分比。 */
+var PREVIEW_FONT_FLOOR = 0.035;
+
+function $(id){ return document.getElementById(id); }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function nextTick(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+function fmtSize(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+function baseOf(name){ var i = (name || '').lastIndexOf('.'); return i > 0 ? name.slice(0, i) : (name || 'image'); }
+function colorName(hex){
+  var map = { '#ffffff':'白色', '#000000':'黑色', '#ff0000':'红色', '#ffd400':'黄色', '#ffe100':'黄色',
+              '#3f6ef0':'蓝色', '#00a86b':'绿色', '#ff7a00':'橙色', '#888888':'灰色', '#ff69b4':'粉色',
+              '#f5f5f5':'浅灰', '#333333':'深灰' };
+  return map[String(hex).toLowerCase()] || hex;
+}
+function pctText(before, after){
+  if(!before) return '';
+  var d = (1 - after / before) * 100;
+  return (d >= 0 ? '↓ ' : '↑ ') + Math.abs(d).toFixed(1) + '%';
+}
+
+/* ==== PURE-CORE-START ==== */
+/* 纯计算区：不碰 DOM、不碰浏览器 API，可以整段抽到 Node 的 vm 里跑单测。
+   全部用 var / function 声明，末尾统一挂到 globalThis 上给自检脚本用。 */
+function extOf(name){ var m = /\.([a-z0-9]+)$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+
+/* ---------- 数值与尺寸换算（extOf 在上面，同属 PURE-CORE 段） ---------- */
+function clampNum(v, lo, hi){
+  v = Number(v);
+  if(!isFinite(v)) v = lo;
+  return Math.min(hi, Math.max(lo, v));
+}
+function parseInt10(s, d){
+  var v = parseInt(s, 10);
+  return isFinite(v) ? v : d;
+}
+
+/* ---------- ① 裁剪：算出实际要抠的那块矩形 ---------- */
+/* 裁剪框（伸缩框）用**归一化坐标**存：box = {x,y,w,h}，都是 0~1，相对整张图。
+   这样它在预览画布与导出原图上算出来的**相对位置完全一致**，
+   也就不会出现「预览按 1000px 算、导出按 3376px 算」那种两套尺度打架的问题。 */
+/* 归一化框 → 像素矩形。越界时的处理：**优先保住尺寸，把框挪回画面内**
+   （跟拖拽时 moveBox 的行为一致，避免「存进去的框」和「屏幕上看到的框」不一样）。 */
+/* 归一化框 → 像素矩形。
+   ⚠️ 这里的下限**不能写死成归一化的 0.02**：0.02 在 3000 像素宽的图上是 60 像素，
+   会把一个本来很小的框硬撑大；而只撑一个方向就会把比例夹歪
+   （真机上出现过 38×22 / 50×22 这种"看着差不多其实不成比例"的结果）。
+   改成"至少 2 像素"：1280 宽以内与原来的 0.02 基本等价，大图上则不会乱夹。
+   ratio > 0（固定比例）时下限收紧到 2 像素；否则保持 0.02 的老口径。 */
+function normToRect(box, W, H, ratio){
+  W = Math.max(1, Math.round(W)); H = Math.max(1, Math.round(H));
+  var minw = (ratio > 0) ? Math.min(1, 2 / W) : 0.02;
+  var minh = (ratio > 0) ? Math.min(1, 2 / H) : 0.02;
+  var x = clampNum(box && box.x, 0, 1), y = clampNum(box && box.y, 0, 1);
+  var w = clampNum(box && box.w, minw, 1), h = clampNum(box && box.h, minh, 1);
+  var rw = Math.max(1, Math.min(W, Math.round(w * W)));
+  var rh = Math.max(1, Math.min(H, Math.round(h * H)));
+  var rx = Math.max(0, Math.min(W - rw, Math.round(x * W)));
+  var ry = Math.max(0, Math.min(H - rh, Math.round(y * H)));
+  return { x: rx, y: ry, w: rw, h: rh };
+}
+function rectToNorm(r, W, H){
+  W = Math.max(1, W); H = Math.max(1, H);
+  return { x: r.x / W, y: r.y / H, w: r.w / W, h: r.h / H };
+}
+/* 固定比例下"框的像素宽度"的地板（下限）。
+   为什么要它：归一化宽高的下限是 0.02，而框宽 w 与高 h 满足 h = w/ratio，
+   所以 h 也必须 ≥ 0.02×画面的高，否则下游把归一化值夹回 0.02 时就把比例夹歪了
+   （真机上在 1920×1080 上出现过 38×22 这种"看着差不多、其实不成比例"的结果）。
+   ⚠️ 还要留 1 像素余量：h 会向上取整，2% 正好卡在整数边界时要再抬一像素。
+   needW / needH 是"本图与参考画布各自的 2%像素"里的较大者。 */
+function minRatioWidth(ratio, needW, needH){
+  if(!(ratio > 0)) return 1;
+  return Math.max(1, Math.round(Math.max(needW, (needH + 1) * ratio)));
+}
+/* 求「符合目标比例的最大像素尺寸」。只在归一化空间乘除会留下四舍五入误差
+   （用户会把固定比例当"精确比例"用），所以这里直接解出满足 w/h = ratio 的整数候选。
+   ⚠️ 这是**最大**尺寸，只用于「初始化 / 重置 / 比例切换」；
+   拖拽缩放时要保住用户拉的尺寸，用下面的 lockBoxToRatio。 */
+function maxRatioSize(ratio, W, H){
+  W = Math.max(1, W); H = Math.max(1, H);
+  if(!(ratio > 0)) return { w: W, h: H };
+  var maxW = Math.min(W, H * ratio);
+  var best = null;
+  var cand = [
+    { w: Math.round(maxW), h: Math.round(Math.round(maxW) / ratio) },
+    { w: Math.floor(maxW), h: Math.round(Math.floor(maxW) / ratio) }
+  ];
+  for(var i = 0; i < cand.length; i++){
+    var cw = Math.max(1, cand[i].w), ch = Math.max(1, cand[i].h);
+    if(cw > W || ch > H) continue;
+    if(Math.round(cw / ratio) !== ch) continue;        // 严格校验：必须精确成比例
+    if(!best || cw * ch > best.w * best.h) best = { w: cw, h: ch };
+  }
+  if(!best){
+    // 兜底也要守住比例：左对齐宽度 → 反推高度 → 再按画面收一遍
+    var fw = Math.max(1, Math.min(W, Math.round(maxW)));
+    var fh = Math.max(1, Math.min(H, Math.round(fw / ratio)));
+    fw = Math.max(1, Math.min(W, Math.round(fh * ratio)));
+    best = { w: fw, h: fh };
+  }
+  return best;
+}
+/* 把归一化盒子按目标比例**贴合到最大**（以当前中心为基准，整框留在画面内）。
+   ratio<=0 表示「不锁比例，只做边界夹紧」。 */
+function fitBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    b.x = Math.max(0, Math.min(1 - b.w, b.x));
+    b.y = Math.max(0, Math.min(1 - b.h, b.y));
+    return b;
+  }
+  var best = maxRatioSize(ratio, W, H);
+  var out = withBoxSize(b, best.w / W, best.h / H);
+  out.frac = 1;                        // 「这张图的同比例最大块」= 100%，换图时按它等比缩放
+  return out;
+}
+/* 按目标比例**锁住当前尺寸**（拖拽 / 换图时用；不能弹回最大值）。
+   ★ 尺子只认 box.frac（「占这张图同比例最大块的多少」），**不要**从归一化宽高反推：
+     归一化宽高是「跟图片比例相关」的，换了一张图之后再反推出来的 frac 是错的
+     —— 800×600 上的最大 1:1 框 w=0.75，套到 600×1000 上反推成 0.75（正确是 1），
+       正好就是"界面说 600×600、导出却 450×450"的根因。
+   frac 缺失时才退化成按当前图估一个。 */
+function lockBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  carryBoxMeta(box, b);                    // frac / pxW / refW 跟着走，别在中途丢
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    // 不锁比例：只把框挪回画面内（尺寸不动）
+    b.x = Math.max(0, Math.min(1 - b.w, b.x));
+    b.y = Math.max(0, Math.min(1 - b.h, b.y));
+    return b;
+  }
+  var max = maxRatioSize(ratio, W, H);
+  var frac = (box && box.frac > 0)
+    ? clampNum(box.frac, 1 / Math.max(1, max.w), 1)
+    : Math.min(1, clampNum(b.w * W, 1, max.w) / max.w);
+  var pw = Math.max(1, Math.round(max.w * frac));
+  var ph = Math.max(1, Math.round(pw / ratio));
+  if(ph > H){ ph = Math.max(1, Math.floor(H)); pw = Math.max(1, Math.round(ph * ratio)); }
+  if(pw > W){ pw = Math.max(1, Math.floor(W)); ph = Math.max(1, Math.round(pw / ratio)); }
+  var out = withBoxSize(b, pw / W, ph / H);
+  out.frac = Math.max(1 / Math.max(1, max.w), pw / max.w);
+  return out;
+}
+/* 把源框的"元信息"补到目标框上：w/h/x/y 用目标的，其它字段（frac 等）从源框抄过来。
+   ⚠️ 为什么必须有这个：拖拽过程中，起点会被存成一份 `{x,y,w,h}` 快照（cropSt.start），
+   而 moveBox / resizeBox 都是"只有 x/y/w/h"的纯函数。如果直接把它们的结果塞进 cropSt.box，
+   就会一路丢掉 frac —— 拖动结束后的那次延迟渲染里 readOpts → cropBoxSnapshot 就会抛错，
+   表现为「拖完预览不再刷新」（真机 2026 就是这么炸的）。
+   所以在**拖动路径的每次落定**处，都要用这个函数把 frac 从权威源补回来。 */
+function carryBoxMeta(from, to){
+  if(!to) return to;
+  if(from && from.frac > 0) to.frac = from.frac;
+  if(from && from.pxW > 0) to.pxW = from.pxW;       // 尺寸的权威值（像素）
+  if(from && from.refW > 0){ to.refW = from.refW; to.refH = from.refH; }
+  return to;
+}
+/* 以原框中心为基准，套用新的归一化宽高，并保证整框留在画面内。
+   ⚠️ 语义是「改尺寸」：**除了 w/h/x/y，其它字段（尤其是 frac / pxW / refW）原样保留**。
+   任何"重建框对象"的地方都必须走这里，不要手写 {x,y,w,h} 字面量 —— 会丢 frac。
+   ⚠️⚠️ **必须是纯函数：返回新对象，绝不修改传入的 b**。
+   曾经它原地改 b —— 而拖拽时 b 就是 `cropSt.start`（pointerdown 的快照），
+   于是每收到一个 pointermove，起点就被改小一次，位移被逐次累积：
+   同一条 60px 轨迹，发 1 个事件是 540×540、发 12 个就成 210×210、发 30 个直接塌到 16×16。
+   真机上一次缓慢拖动会发几十上百个 pointermove → 用户一拖框就没了。
+   （真机 2026-10 复现；修法就是把起点快照保护成不可变。） */
+function withBoxSize(b, nw, nh){
+  nw = Math.min(1, Math.max(0.02, nw));
+  nh = Math.min(1, Math.max(0.02, nh));
+  var cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  var out = carryBoxMeta(b, { x: 0, y: 0, w: nw, h: nh });
+  out.x = Math.max(0, Math.min(1 - nw, cx - nw / 2));
+  out.y = Math.max(0, Math.min(1 - nh, cy - nh / 2));
+  return out;
+}
+/* 按目标比例「贴合但保留相对大小」：把这个框换到另一张（不同比例的）图上时用。
+   归一化框是跟图片比例相关的 —— 同一个 {0.75,1} 在 4:3 的图上是正方形，
+   套到 3:2 的图上就不是了，所以每一张都要**各自**重算一次宽高。
+   怎么同时保住三件事：
+     · 中心位置（归一化）原样保留；
+     · 尺寸用 box.pxW（像素宽度，权威值）还原 —— 大图上「1 像素」比归一化 0.02 还小，
+       只靠归一化宽高传递会一路被夹歪，所以尺寸必须以像素为准；
+     · 不小于"归一化下限折算出来的像素下限"（2%），否则下游 normToRect 的 0.02
+       夹取会把比例夹歪。
+   box.refW / box.refH 是这个框**当初是在多大的画布上归一化的**（编辑器里就是预览画布）。
+   地板的 2% 必须以它为基准，再按目标图的尺寸放大 —— 否则在"预览小画布 + 大原图"
+   这种组合下，地板会被算小 3 倍，比例就在最小尺寸处崩了（1920×1080 上踩到过）。
+   注意：这里**不能**用 fitBoxToRatio —— 那会把框顶到最大，用户拖小的尺寸会被弹回去。 */
+function refitBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)) return b;
+  var max = maxRatioSize(ratio, W, H);
+  // 地板：同时满足「本图上的 2%」和「参考画布上的 2%」折算过来的像素，
+  // 并留出高度向上取整的 1 像素余量 —— 详见 minRatioWidth 的说明。
+  var refW = (box && box.refW > 0) ? box.refW : W;
+  var refH = (box && box.refH > 0) ? box.refH : H;
+  var needW = Math.max(W * 0.02, refW * 0.02);
+  var needH = Math.max(H * 0.02, refH * 0.02);
+  var minW = Math.max(1, Math.min(max.w, minRatioWidth(ratio, needW, needH)));
+  var frac = (box && box.frac > 0) ? clampNum(box.frac, 1 / Math.max(1, max.w), 1) : null;
+  var pw;
+  if(box && box.pxW > 0) pw = Math.round(box.pxW);                                   // 首选：像素宽度
+  else if(frac !== null) pw = Math.round(max.w * frac);                              // 次选：相对大小
+  else pw = Math.round(b.w * W);                                                     // 兜底：按当前图估
+  pw = Math.round(clampNum(pw, minW, max.w));
+  var ph = Math.round(pw / ratio);
+  if(ph > max.h){ ph = Math.max(1, Math.round(max.h)); pw = Math.max(1, Math.round(ph * ratio)); }
+  if(pw > max.w){ pw = Math.max(1, Math.round(max.w)); ph = Math.max(1, Math.round(pw / ratio)); }
+  var out = withBoxSize(b, pw / W, ph / H);
+  out.frac = clampNum(pw / max.w, 1 / Math.max(1, max.w), 1);
+  out.pxW = pw;
+  return out;
+}
+/* 移动（只改位置，不改大小，整框夹在画面内） */
+function moveBox(box, dx, dy){
+  var w = clampNum(box.w, 0.02, 1), h = clampNum(box.h, 0.02, 1);
+  return {
+    x: Math.max(0, Math.min(1 - w, clampNum(box.x, 0, 1) + dx)),
+    y: Math.max(0, Math.min(1 - h, clampNum(box.y, 0, 1) + dy)),
+    w: w, h: h
+  };
+}
+/* 拖手柄缩放。h 是手柄名（nw/n/ne/w/e/sw/s/se），dx/dy 是归一化位移。
+   lockRatio>0 时锁比例；否则自由缩放（用于「原图比例」以外的自由情形）。 */
+function resizeBox(box, handle, dx, dy, lockRatio){
+  var L = clampNum(box.x, 0, 1), T = clampNum(box.y, 0, 1);
+  var W = clampNum(box.w, 0.02, 1), H = clampNum(box.h, 0.02, 1);
+  var R = Math.min(1, L + W), B = Math.min(1, T + H);
+  var h = String(handle || 'se');
+  var west = h.indexOf('w') >= 0, east = h.indexOf('e') >= 0;
+  var north = h.charAt(0) === 'n', south = h.charAt(0) === 's';
+  var nL = L, nT = T, nR = R, nB = B;
+  // 注意夹取范围：往左/往上拖的手柄，最多只能推到「对面那条边」，反过来也一样，
+  // 否则框会被推成负数（曾经写成 Math.min(R-0.02, ...) / Math.min(B-0.02, ...)，方向反了）
+  if(west) nL = Math.max(0, Math.min(R, L + dx));
+  if(east) nR = Math.min(1, Math.max(L, R + dx));
+  if(north) nT = Math.max(0, Math.min(B, T + dy));
+  if(south) nB = Math.min(1, Math.max(T, B + dy));
+
+  if(lockRatio > 0){
+    // 缩放过程中锁死比例。
+    // 角手柄：对角那个角不动（锚点）；
+    // 边手柄：被拖的那条边按鼠标走，另一条边由比例推出，**重心留在原来的中心线上**
+    //（这样用「上/下/左/右」四个手柄时画面不会莫名其妙地跑偏）。
+    var corner = (west || east) && (north || south);
+    var cx = L + W / 2, cy = T + H / 2;
+    var nw, nh;
+    if(corner){
+      var anchorX = west ? nR : nL, anchorY = north ? nB : nT;
+      var wNow = Math.abs((west ? nL : nR) - anchorX);
+      var hNow = Math.abs((north ? nT : nB) - anchorY);
+      nw = (wNow / Math.max(1e-6, hNow)) >= lockRatio ? wNow : hNow * lockRatio;
+      nh = nw / lockRatio;
+      var maxW = west ? anchorX : (1 - anchorX);
+      var maxH = north ? anchorY : (1 - anchorY);
+      var k = Math.min(1, maxW / Math.max(1e-6, nw), maxH / Math.max(1e-6, nh));
+      nw = Math.max(0.02, nw * k);
+      nh = Math.max(0.02, nh * k);
+      var px = west ? anchorX - nw : anchorX;
+      var py = north ? anchorY - nh : anchorY;
+      return { x: Math.max(0, Math.min(1 - nw, px)), y: Math.max(0, Math.min(1 - nh, py)), w: nw, h: nh };
+    }
+    if(west || east){
+      nw = Math.abs((west ? nL : nR) - (west ? nR : nL));
+      nh = nw / lockRatio;
+      var maxH2 = Math.min(cy, 1 - cy) * 2;
+      if(nh > maxH2 && maxH2 > 0){ nh = maxH2; nw = nh * lockRatio; }
+    } else {
+      nh = Math.abs((north ? nT : nB) - (north ? nB : nT));
+      nw = nh * lockRatio;
+      var maxW2 = Math.min(cx, 1 - cx) * 2;
+      if(nw > maxW2 && maxW2 > 0){ nw = maxW2; nh = nw / lockRatio; }
+    }
+    nw = Math.max(0.02, nw); nh = Math.max(0.02, nh);
+    var fx = (west ? nR - nw : (east ? nL : cx - nw / 2));
+    var fy = (north ? nB - nh : (south ? nT : cy - nh / 2));
+    return { x: Math.max(0, Math.min(1 - nw, fx)), y: Math.max(0, Math.min(1 - nh, fy)), w: nw, h: nh };
+  }
+  return { x: nL, y: nT, w: Math.max(0.02, nR - nL), h: Math.max(0.02, nB - nT) };
+}
+// opt: { mode:'box'|'edge', ratio:'orig'|'1:1'|'custom', ratioW, ratioH,
+//        anchor:'tl'..'br', zoom:10~100, dx:-50~50, dy:-50~50,
+//        box:{x,y,w,h} 归一化伸缩框（有就用它，没有才走 anchor/zoom/dx/dy）,
+//        edgePercent:0~30, edgePx:>=0 }
+function cropRect(w, h, opt){
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  opt = opt || {};
+  var x = 0, y = 0, cw = w, ch = h;
+  if(opt.mode === 'edge'){
+    var n = (opt.edgePx > 0) ? Math.round(opt.edgePx) : Math.round(Math.min(w, h) * clampNum(opt.edgePercent, 0, 45) / 100);
+    n = Math.max(0, n);
+    x = n; y = n; cw = w - 2 * n; ch = h - 2 * n;
+    if(cw < 1){ cw = 1; x = Math.floor((w - 1) / 2); }
+    if(ch < 1){ ch = 1; y = Math.floor((h - 1) / 2); }
+  } else if(opt.box && opt.box.w > 0 && opt.box.h > 0){
+    // 伸缩框路径：框就是裁剪矩形。
+    // 说明（这里是"界面 / 导出"唯一的事实源，两边都必须走这一条）：
+    //  · 归一化框是「跟图片比例相关」的 —— 同一个 {0.75,1} 在 4:3 的图上是正方形，
+    //    套到 3:2 的图上就不是了。所以**每一张图都要各自解一次**，
+    //    否则批量里只有碰巧同比例的那几张是对的（真机上就是这么翻车的）。
+    //  · 尺寸用 box.frac（占这张图同比例最大块的多少）还原：中心位置保持，
+    //    frac=1 时每张图都拿到自己的最大内接块（800×600→600×600、3000×2000→2000×2000、
+    //    320×240→240×240、600×1000→600×600）。
+    //  · ratio = 0（原图比例）时不动，保持用户拖出来的样子。
+    var rr = opt.ratio === 'orig' || opt.ratio === undefined ? 0 : ratioOf(opt, w, h);
+    var useBox = (rr > 0) ? refitBoxToRatio(opt.box, rr, w, h) : opt.box;
+    var rb = normToRect(useBox, w, h, rr);
+    x = rb.x; y = rb.y; cw = rb.w; ch = rb.h;
+  } else {
+    // 老路径（迁移兜底 / 程序化设置时用）：比例 + 锚点 + zoom + 微调。
+    // 保持原来那套「长边吃满再夹回」的算法（已被单测钉住），只是多了一条伸缩框快路。
+    var r = ratioOf(opt, w, h);
+    var zoom = clampNum(opt.zoom === undefined ? 100 : opt.zoom, 5, 100) / 100;
+    if(r >= w / h){ cw = w; ch = w / r; }
+    else { ch = h; cw = h * r; }
+    cw = Math.max(1, Math.round(cw * zoom));
+    ch = Math.max(1, Math.round(ch * zoom));
+    if(cw > w){ cw = Math.floor(w); ch = cw / r; }
+    if(ch > h){ ch = Math.floor(h); cw = ch * r; }
+    cw = Math.max(1, Math.min(w, Math.round(cw)));
+    ch = Math.max(1, Math.min(h, Math.round(ch)));
+    var a = anchorOf(opt.anchor);
+    x = Math.round((w - cw) * a[0]);
+    y = Math.round((h - ch) * a[1]);
+    x += Math.round(w * clampNum(opt.dx, -80, 80) / 100);
+    y += Math.round(h * clampNum(opt.dy, -80, 80) / 100);
+    x = Math.max(0, Math.min(w - cw, x));
+    y = Math.max(0, Math.min(h - ch, y));
+  }
+  return { x: x, y: y, w: cw, h: ch };
+}
+function ratioOf(opt, w, h){
+  var r = opt.ratio;
+  if(r === '1:1') return 1;
+  if(r === '3:4') return 3 / 4;
+  if(r === '4:3') return 4 / 3;
+  if(r === '16:9') return 16 / 9;
+  if(r === '9:16') return 9 / 16;
+  if(r === '21:9') return 21 / 9;
+  if(r === 'custom'){
+    var a = Math.max(1, parseInt10(opt.ratioW, 4));
+    var b = Math.max(1, parseInt10(opt.ratioH, 5));
+    return a / b;
+  }
+  return w / h;   // 原图比例
+}
+function anchorOf(a){
+  var col = (a && a.charAt(1) === 'l') ? 0 : (a && a.charAt(1) === 'r') ? 1 : 0.5;
+  var row = (a && a.charAt(0) === 't') ? 0 : (a && a.charAt(0) === 'b') ? 1 : 0.5;
+  return [col, row];
+}
+
+/* ---------- ② 旋转 / 翻转：算出画布要多大 ---------- */
+function rotateDims(w, h, deg){
+  var a = ((Number(deg) || 0) % 360 + 360) % 360;
+  if(a === 90 || a === 270) return { w: h, h: w };
+  if(a === 180 || a === 0) return { w: w, h: h };
+  var rad = a * Math.PI / 180;
+  var c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+  return { w: Math.max(1, Math.round(w * c + h * s)), h: Math.max(1, Math.round(w * s + h * c)) };
+}
+
+/* ---------- ③ 改尺寸：算出目标宽高 ---------- */
+function fitInside(w, h, bw, bh){
+  // contain：等比缩到装进框里、不裁切、也不变形。
+  // 只缩不放（跟「不放大」同一个口径）：比框小的图保持原尺寸，不糊。
+  var r = Math.min(1, bw / w, bh / h);
+  return { w: Math.max(1, Math.round(w * r)), h: Math.max(1, Math.round(h * r)) };
+}
+function dimsFor(w, h, opt){
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  opt = opt || {};
+  var m = opt.mode || 'long', noUp = opt.noEnlarge !== false;
+  var out = { w: w, h: h };
+  if(m === 'long'){
+    var L = Math.max(1, parseInt10(opt.longEdge, 1920));
+    var mx = Math.max(w, h);
+    out = (mx > L) ? scaleTo(w, h, L / mx) : { w: w, h: h };
+  } else if(m === 'short'){
+    var S = Math.max(1, parseInt10(opt.shortEdge, 1080));
+    var mn = Math.min(w, h);
+    out = (mn > S) ? scaleTo(w, h, S / mn) : { w: w, h: h };
+  } else if(m === 'wh'){
+    out = { w: Math.max(1, parseInt10(opt.w, 1080)), h: Math.max(1, parseInt10(opt.h, 1080)) };
+  } else if(m === 'pct'){
+    out = scaleTo(w, h, Math.max(1, parseInt10(opt.percent, 100)) / 100);
+  } else if(m === 'fit'){
+    out = fitInside(w, h, Math.max(1, parseInt10(opt.fitW, 1080)), Math.max(1, parseInt10(opt.fitH, 1080)));
+  }
+  if(noUp && (m === 'wh' || m === 'pct')){
+    var s = Math.min(1, out.w / w, out.h / h);
+    if(s < 1) out = { w: Math.max(1, Math.round(w * s)), h: Math.max(1, Math.round(h * s)) };
+    else out = { w: w, h: h };
+  }
+  return out;
+}
+function scaleTo(w, h, r){
+  return { w: Math.max(1, Math.round(w * r)), h: Math.max(1, Math.round(h * r)) };
+}
+
+/* ---------- 输出格式 / 无损判定 ---------- */
+/* extOf 定义在下面 IMG-ENGINE 段里（引擎也要用），这里直接用 */
+function fmtOfName(name){
+  var e = extOf(name);
+  if(e === 'jpg' || e === 'jpeg' || e === 'jpe') return 'jpeg';
+  if(e === 'png') return 'png';
+  if(e === 'webp') return 'webp';
+  return '';
+}
+function typeOf(fmt){ return fmt === 'jpeg' ? 'image/jpeg' : fmt === 'webp' ? 'image/webp' : 'image/png'; }
+function extOfFmt(fmt){ return fmt === 'jpeg' ? 'jpg' : fmt === 'webp' ? 'webp' : 'png'; }
+function labelOfFmt(fmt){ return fmt === 'jpeg' ? 'JPG' : fmt === 'webp' ? 'WebP' : 'PNG'; }
+function targetFmtOf(opt){
+  if(!opt.formatOn || !opt.format || opt.format === 'keep') return null;
+  return opt.format;
+}
+/* 返回 true 表示这一张的输出会掉画质。
+   判断分两种情况，别混在一起：
+   · 画面原封不动（transformed=false）且格式没变 → 走字节级剥元数据，不重编码 → 无损
+   · 画面动过之后就必须重编码：PNG 目标仍然无损（PNG 是无损编码）；
+     JPG 目标必然有损；WebP 目标走 canvas 的「画质」参数，算有损（画质 100 也一样） */
+function outputIsLossy(srcFmt, tgtFmt, transformed){
+  if(!transformed && srcFmt === tgtFmt) return false;
+  if(tgtFmt === 'png') return srcFmt !== 'png';
+  return true;   // jpeg / webp / 未知目标
+}
+/* 逐项判断：某个操作会不会「重采样 / 重绘像素」。
+   注意这**不等于**整条链路无损 —— 裁剪和 90° 整数倍旋转本身是像素级搬运不重采样，
+   但只要后面还要编码一次，JPG / WebP 目标照样会再掉画质（见上面 outputIsLossy）。 */
+function opLossyForPng(op){
+  if(op === 'crop') return false;        // 裁剪是像素级搬运
+  if(op === 'rot90') return false;       // 90 / 180 / 270 也是像素级搬运
+  if(op === 'rotateFree') return true;   // 任意角度要重采样
+  if(op === 'resize') return true;       // 改尺寸要重采样
+  if(op === 'watermark') return true;    // 写字 / 贴图要重绘像素
+  return true;
+}
+/* 一句话说明「这次会损失什么」，界面里由它统一生成说明，避免文案自相矛盾 */
+function lossNote(srcFmt, tgtFmt, transformed){
+  var s = srcFmt ? labelOfFmt(srcFmt) : '未知';
+  // 「画面原封不动 + 原格式」＝字节级剥元数据，不重编码
+  if(!transformed && srcFmt && srcFmt === tgtFmt){
+    return '原封不动、只剥元数据：直接在原始文件字节上动刀，一个像素都不重新编码，是<b>无损</b>的（' + s + ' 还是 ' + s + '）';
+  }
+  if(tgtFmt === 'jpeg') return s + ' 转 JPG：JPG 是有损格式，重编码一次就掉一次画质（透明处会填成你选的背景色）';
+  if(tgtFmt === 'webp') return s + ' 转 WebP：浏览器编码 WebP 走「画质」参数，属于有损重编码（画质 100 时肉眼基本看不出来）';
+  if(tgtFmt === 'png'){
+    if(srcFmt === 'png') return 'PNG 转 PNG：无损容器 + 无损编码，裁剪 / 旋转 / 改尺寸 / 加水印之后仍然是真无损';
+    return s + ' 转 PNG：<b>不新增损失</b>（PNG 是无损容器，重新存一遍不会更差），但' + s
+      + '原图已经被有损压过一次，解出来再存回去救不回已经压掉的画质（体积通常还会变大）';
+  }
+  return '原格式输出，画面重编码一次：PNG 转 PNG 仍是真无损；JPG / WebP 重编码一次掉一次画质';
+}
+
+/* ---------- ⑤ 目标体积：二分逼近质量（边界与回退都要能测） ---------- */
+/* probe(quality) → { size, blob }
+   qualities：从小到大排列的画质档位
+   返回 { blob, size, quality, hit, usedQuality, note }
+   hit=false 表示已经压到最低画质还是没到目标，此时返回「压出来的最小那一个」 */
+function searchTargetSize(qualities, targetBytes, probe){
+  var qs = (qualities || []).slice().sort(function(a, b){ return a - b; });
+  if(!qs.length) throw new Error('searchTargetSize: 画质档位为空');
+  var target = Math.max(1, Math.round(targetBytes));
+  var best = null;          // 不超过目标的里，最大的那个
+  var bestQ = null;
+  var smallest = null;      // 所有结果里最小的那个（回退用）
+  var lo = 0, hi = qs.length - 1;
+  var iters = 0;
+  while(lo <= hi && iters++ < 24){
+    var mid = (lo + hi) >> 1;
+    var q = qs[mid];
+    var r = probe(q, iters);
+    if(!smallest || r.size < smallest.size) smallest = { blob: r.blob, size: r.size, quality: q };
+    if(r.size <= target){ best = { blob: r.blob, size: r.size, quality: q }; lo = mid + 1; }
+    else { hi = mid - 1; }
+  }
+  if(best){
+    return {
+      blob: best.blob, size: best.size, quality: best.quality,
+      usedQuality: best.quality, hit: true,
+      note: '画质 ' + best.quality + ' → ' + kbText(best.size) + '，达到了目标'
+    };
+  }
+  var fb = smallest || { blob: null, size: 0, quality: qs[0] };
+  return {
+    blob: fb.blob, size: fb.size, quality: fb.quality,
+    usedQuality: fb.quality, hit: false,
+    note: '已压到 ' + kbText(fb.size) + '（未能达到目标 ' + kbText(target) + '：画质已经降到最低 ' + qs[0] + '，再降就糊得没法看了）'
+  };
+}
+function kbText(bytes){ return fmtSizeStatic(bytes); }
+function fmtSizeStatic(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+/* ---------- 水印几何（渲染要用的数值计算，也算纯函数） ---------- */
+function posToXY(W, H, bw, bh, marginPx, pos){
+  var m = marginPx;
+  var col = (pos && pos.charAt(1) === 'l') ? 0 : (pos && pos.charAt(1) === 'r') ? 2 : 1;
+  var row = (pos && pos.charAt(0) === 't') ? 0 : (pos && pos.charAt(0) === 'b') ? 2 : 1;
+  var x = col === 0 ? m : (col === 2 ? W - bw - m : (W - bw) / 2);
+  var y = row === 0 ? m : (row === 2 ? H - bh - m : (H - bh) / 2);
+  return { x: x, y: y };
+}
+
+/* 把这一段的纯函数显式挂到全局，好让开发脚本能单独抽出来跑单测（浏览器里也一并可用）。
+   必须在标记区内直接写函数名赋值 —— 写成循环 `globalThis[k] = obj[k]` 会踩到
+   “函数名是 globalThis 上的访问器属性”这个坑，导致挂上去的东西反向覆盖函数定义。
+   以后要加新能力：把纯计算写在这一段里，再在这里补一行即可。 */
+globalThis.__IMG_BATCH_PURE__ = true;
+globalThis.cropRect = cropRect;
+globalThis.normToRect = normToRect;
+globalThis.rectToNorm = rectToNorm;
+globalThis.fitBoxToRatio = fitBoxToRatio;
+globalThis.refitBoxToRatio = refitBoxToRatio;
+globalThis.maxRatioSize = maxRatioSize;
+globalThis.lockBoxToRatio = lockBoxToRatio;
+globalThis.withBoxSize = withBoxSize;
+globalThis.moveBox = moveBox;
+globalThis.resizeBox = resizeBox;
+globalThis.ratioOf = ratioOf;
+globalThis.anchorOf = anchorOf;
+globalThis.rotateDims = rotateDims;
+globalThis.dimsFor = dimsFor;
+globalThis.fitInside = fitInside;
+globalThis.scaleTo = scaleTo;
+globalThis.clampNum = clampNum;
+globalThis.parseInt10 = parseInt10;
+globalThis.extOf = extOf;
+globalThis.fmtOfName = fmtOfName;
+globalThis.typeOf = typeOf;
+globalThis.extOfFmt = extOfFmt;
+globalThis.labelOfFmt = labelOfFmt;
+globalThis.targetFmtOf = targetFmtOf;
+globalThis.outputIsLossy = outputIsLossy;
+globalThis.opLossyForPng = opLossyForPng;
+globalThis.lossNote = lossNote;
+globalThis.searchTargetSize = searchTargetSize;
+globalThis.fmtSizeStatic = fmtSizeStatic;
+globalThis.posToXY = posToXY;
+/* ==== PURE-CORE-END ==== */
+
+/* ===================== 消息条 ===================== */
+var msgTimer = null;
+function showMsg(elId, txtId, text, kind){
+  var box = $(elId);
+  box.className = 'msg ' + (kind || 'ok');
+  $(txtId).textContent = text;
+  box.classList.remove('hidden');
+}
+function hideMsg(elId){ $(elId).classList.add('hidden'); }
+function flash(text, kind){
+  showMsg('msg', 'msgtxt', text, kind);
+  if(msgTimer) clearTimeout(msgTimer);
+  msgTimer = setTimeout(function(){ hideMsg('msg'); }, 7000);
+}
+
+/* ===================== 状态 ===================== */
+var items = [];          // {id,file,name,base,ext,fmt,w,h,exifOri,exifApplied,big,thumb,status,stErr}
+var seq = 0;
+var selId = 0;
+var pvTab = 'both';
+var busy = false;
+var cancelFlag = false;
+var lastSummary = null;
+var previewCache = {};   // id -> {blob, url, name, w, h, note}
+var previewBytes = 0;
+var pvSrc = null;        // 预览用小画布（≤PREVIEW_SIDE）
+var pvToken = 0;
+var renderTimer = null;
+var renderSeq = 0;
+
+function byId(id){
+  for(var i = 0; i < items.length; i++) if(items[i].id === id) return items[i];
+  return null;
+}
+function selIndex(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return i;
+  return -1;
+}
+function selItem(){ var i = selIndex(); return i < 0 ? null : items[i]; }
+
+/* ===================== 释放 ===================== */
+/* releaseBmp / releaseCanvas 定义在下面的 IMG-ENGINE 段（跟着处理引擎一起走，
+   这样引擎能被开发脚本整段抽出来真跑）。这里只留依赖预览状态的这一个。 */
+function releasePrevCanvas(){
+  if(pvSrc) releaseCanvas(pvSrc);
+  pvSrc = null;
+}
+
+/* ===================== EXIF 方向探测（只读字节，用来如实显示） ===================== */
+/* u16be / u32be / u32le / sniffFormat 定义在下面的 IMG-ENGINE 段（字节级剥离也要用） */
+// 读 JPEG 的 EXIF Orientation（没读出来返回 0）；顺带把 SOF 里的真实存储宽高读出来
+function jpegInfo(u8){
+  var out = { ori: 0, w: 0, h: 0 };
+  if(u8.length < 4 || u8[0] !== 0xFF || u8[1] !== 0xD8) return out;
+  var p = 2, guard = 0;
+  while(p + 1 < u8.length && guard++ < 4096){
+    if(u8[p] !== 0xFF){ p++; continue; }
+    var marker = u8[p+1];
+    if(marker === 0xFF || marker === 0x00){ p++; continue; }
+    if(marker === 0xD8 || (marker >= 0xD0 && marker <= 0xD7) || marker === 0x01){ p += 2; continue; }
+    if(marker === 0xD9 || marker === 0xDA) break;
+    if(p + 4 > u8.length) break;
+    var len = u16be(u8, p + 2);
+    if(len < 2 || p + 2 + len > u8.length) break;
+    var segEnd = p + 2 + len;
+    if(marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC){
+      if(p + 9 <= u8.length){ out.h = u16be(u8, p + 5); out.w = u16be(u8, p + 7); }
+    }
+    if(marker === 0xE1){
+      var q = p + 4;
+      if(q + 6 <= segEnd && u8[q] === 0x45 && u8[q+1] === 0x78 && u8[q+2] === 0x69 && u8[q+3] === 0x66){
+        q += 6;
+        if(q + 8 <= segEnd){
+          var le = u8[q + 1] === 0x49;
+          var rd16 = function(x){ return le ? (u8[x] | (u8[x+1] << 8)) : u16be(u8, x); };
+          var rd32 = function(x){ return le ? u32le(u8, x) : u32be(u8, x); };
+          if(rd16(q + 2) === 42){
+            var ifd = q + rd32(q + 4);
+            if(ifd + 2 <= segEnd){
+              var cnt = rd16(ifd);
+              if(cnt > 512) cnt = 512;
+              for(var i = 0; i < cnt; i++){
+                var e = ifd + 2 + i * 12;
+                if(e + 12 > segEnd) break;
+                if(rd16(e) === 0x0112){ out.ori = rd16(e + 8); break; }
+              }
+            }
+          }
+        }
+      }
+    }
+    p = segEnd;
+  }
+  return out;
+}
+
+/* ===================== 添加 / 移除图片 ===================== */
+/* 打不开的图：按文件类型给出**具体可行的下一步**，而不是笼统说"失败"。
+   最常见的是 iPhone 的 HEIC —— 浏览器（尤其非 Safari）读不了，用户只会觉得"工具坏了"。 */
+function whyCantOpen(names){
+  var first = names[0] || '';
+  var e = extOf(first).toLowerCase();
+  var isHeic = (e === 'heic' || e === 'heif');
+  var head = names.length === 1 ? ('「' + first + '」') : (names.length + ' 张（如「' + first + '」）');
+  if(isHeic) return head + ' 是 iPhone 的 HEIC 格式，浏览器读不了。请先在手机「照片」里导出成 JPG，或换一张。';
+  return head + ' 读不出来。常见原因与办法：① HEIC（iPhone 截图/照片）→ 先在手机里导出成 JPG；'
+       + '② 网页图只存下了缩略图/半张 → 重新保存原图；③ 文件损坏或后缀名不对 → 换一张试试。';
+}
+/* 打包超限时给**具体**的分批建议：份数按上限向上取整，张数按均分给。
+   抽成纯函数便于自检（1.2 GB 上限那段逻辑别只活在 UI 里）。 */
+function zipBatchAdvice(totalBytes, count, maxBytes){
+  var n = Math.max(1, Math.round(count));
+  var lim = maxBytes || MAX_ZIP_BYTES;
+  var batches = Math.max(2, Math.ceil(totalBytes / lim));
+  var per = Math.max(1, Math.ceil(n / batches));
+  batches = Math.max(2, Math.ceil(n / per));
+  return { batches: batches, per: per };
+}
+function addFiles(fileList){  var files = Array.prototype.slice.call(fileList || []);
+  if(!files.length) return;
+  var accepted = [], skipped = [];
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var t = (f.type || '').toLowerCase();
+    var e = extOf(f.name);
+    if(OK_TYPE[t] || e === 'jpg' || e === 'jpeg' || e === 'png' || e === 'webp') accepted.push(f);
+    else skipped.push(f.name);
+  }
+  if(!accepted.length){
+    // 拖进来的很可能是**文件夹**（浏览器给的是目录条目，不是图片）——这是最常见的误会，
+    // 所以用中性提示 + 直接告诉怎么办，不要弹红字报错。
+    var looksLikeFolder = files.some(function(f){ return !f.type && !extOf(f.name); });
+    flash(looksLikeFolder
+      ? '这些不是图片文件。如果拖的是整个文件夹，请打开文件夹、把里面的图片一起选中再拖进来。'
+      : '这些文件都不是 JPG / PNG / WebP 图片，没有添加。', 'warn');
+    return;
+  }
+  busy = true; syncButtons();
+  var done = 0, failed = [];
+  function step(){
+    if(done >= accepted.length){
+      busy = false; syncButtons();
+      if(items.length && selIndex() < 0) selectItem(items[0].id);
+      else { renderThumbs(); renderList(); refreshAll(); }
+      var m = '已添加 ' + accepted.length + ' 张图片。';
+      if(skipped.length) m += ' 已忽略 ' + skipped.length + ' 个不是图片的文件（常见原因：拖进来的是整个文件夹，请把里面的图片一起选中）。';
+      if(failed.length){
+        // 打不开时**直接告诉用户怎么办**，不要只说"失败了"（最常见的是 iPhone 的 HEIC）
+        m += ' 有 ' + failed.length + ' 张打不开：' + whyCantOpen(failed);
+      }
+      flash(m, failed.length ? 'warn' : 'ok');
+      updateBig();
+      return;
+    }
+    var f = accepted[done];
+    $('count').textContent = '正在读取图片 ' + (done + 1) + ' / ' + accepted.length + ' …';
+    decodeFile(f).then(function(bmp){
+      var item = {
+        id: ++seq, file: f, name: f.name, base: baseOf(f.name), ext: extOf(f.name),
+        fmt: fmtOfName(f.name) || 'jpeg',
+        w: bmp.width, h: bmp.height,
+        big: Math.max(bmp.width, bmp.height) > BIG_SIDE,
+        thumb: makeThumb(bmp), status: '', stErr: false,
+        exifOri: 0, exifApplied: false, jpegW: 0, jpegH: 0
+      };
+      releaseBmp(bmp);
+      items.push(item);
+      done++;
+      updateCount();
+      if(done % 8 === 0){ renderThumbs(); renderList(); }
+      readExifInfo(item);
+      setTimeout(step, 0);
+    }).catch(function(){
+      failed.push(f.name);
+      done++;
+      setTimeout(step, 0);
+    });
+  }
+  step();
+}
+function readExifInfo(item){
+  if(item.fmt !== 'jpeg' || !item.file.arrayBuffer) return;
+  item.file.arrayBuffer().then(function(buf){
+    var info = jpegInfo(new Uint8Array(buf));
+    item.exifOri = info.ori; item.jpegW = info.w; item.jpegH = info.h;
+    var swapped = info.ori >= 5 && info.ori <= 8;
+    // 存的是「横着躺 + 要转一下」，解码出来却是竖的 → 说明浏览器真的按 EXIF 摆正了
+    item.exifApplied = !!info.w && (swapped ? (item.w === info.h && item.h === info.w) : (item.w === info.w && item.h === info.h));
+    if(item.id === selId) updateExifInfo();
+  }).catch(function(){});
+}
+function makeThumb(bmp){
+  var s = Math.min(1, THUMB_SIDE / Math.max(bmp.width, bmp.height));
+  var w = Math.max(1, Math.round(bmp.width * s));
+  var h = Math.max(1, Math.round(bmp.height * s));
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  var url = c.toDataURL('image/jpeg', 0.72);
+  releaseCanvas(c);
+  return url;
+}
+function removeItem(id){
+  var idx = -1;
+  for(var i = 0; i < items.length; i++) if(items[i].id === id) idx = i;
+  if(idx < 0) return;
+  var wasSel = (items[idx].id === selId);
+  dropPreviewCache(items[idx].id);
+  items.splice(idx, 1);
+  if(wasSel){
+    selId = 0; releasePrevCanvas();
+    if(items.length){ selectItem(items[Math.min(idx, items.length - 1)].id); }
+    else { renderThumbs(); renderList(); refreshAll(); }
+  } else {
+    renderThumbs(); renderList(); updateCount(); refreshAll();
+  }
+  updateBig();
+}
+function clearAll(){
+  for(var i = 0; i < items.length; i++) dropPreviewCache(items[i].id);
+  items = []; selId = 0; seq = 0; releasePrevCanvas(); pvToken++;
+  $('file').value = ''; $('wmFile').value = '';
+  hideMsg('bigmsg'); hideMsg('emsg');
+  renderThumbs(); renderList(); updateCount(); refreshAll();
+  updateExifInfo();
+  lastSummary = null;
+  $('summary').textContent = '批量处理结束后，这里会显示：总张数、成功 / 失败数，以及处理前 → 处理后的总体积变化（省了百分之多少）。';
+  setProgress(0, '还没有开始处理。');
+}
+function updateCount(){
+  var n = items.length;
+  $('count').innerHTML = n ? ('已选 <b>' + n + '</b> 张图片') : '还没有选图片';
+  syncButtons();
+}
+function updateBig(){
+  var n = 0;
+  for(var i = 0; i < items.length; i++) if(items[i].big) n++;
+  if(n){
+    showMsg('bigmsg', 'bigtxt', '有 ' + n + ' 张图片的长边超过 ' + BIG_SIDE + ' 像素（列表里标了「大图」）。这些图处理会明显更慢、也更吃内存，建议一次别放太多。', 'warn');
+  } else hideMsg('bigmsg');
+}
+function updateExifInfo(){
+  var it = selItem();
+  var box = $('exifinfo');
+  if(!it){
+    box.innerHTML = 'EXIF 自动摆正：还没有图片。选中一张手机竖拍的照片后，这里会显示它的方向信息。';
+    return;
+  }
+  if(it.fmt !== 'jpeg'){
+    box.innerHTML = '<b>EXIF 自动摆正：</b>这张是 ' + labelOfFmt(it.fmt) + '，一般不带方向标记（有这个标记的主要是手机拍出来的 JPG），不需要处理。';
+    return;
+  }
+  if(!it.exifOri){
+    box.innerHTML = '<b>EXIF 自动摆正：</b>这张 JPG 里没有方向标记（或者标记是「正常」），画面方向就是它本来的样子。'
+      + (it.jpegW ? '文件里存的是 ' + it.jpegW + ' × ' + it.jpegH + '。' : '');
+    return;
+  }
+  var txt = '<b>EXIF 自动摆正：</b>方向标记 = ' + it.exifOri + '（' + (it.exifOri <= 1 ? '正常，不用转' : (it.exifOri <= 4 ? '需要旋转' : '需要旋转 + 镜像')) + '）。';
+  if(it.jpegW) txt += ' 文件里实际存的是 ' + it.jpegW + ' × ' + it.jpegH + '，';
+  txt += '解码出来是 ' + it.w + ' × ' + it.h + '。';
+  if(it.exifApplied) txt += '<b class="hint ok" style="display:inline">这个浏览器已经按 EXIF 自动摆正了</b>，你不需要再手动转。';
+  else if(it.exifOri <= 1) txt += '标记是「正常」，本来就不用管。';
+  else txt += '<b>这个浏览器看起来没有按 EXIF 摆正</b>（宽高跟文件里一致）。如果画面躺倒了，请在第 3 步「旋转 / 翻转」里手动转一下，或者换 Chrome / Edge / Firefox 打开。';
+  box.innerHTML = txt;
+}
+
+/* ===================== 缩略图 + 列表 ===================== */
+function renderThumbs(){
+  var box = $('thumbs');
+  var html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    html += '<div class="thumb' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '">'
+          +   '<img src="' + it.thumb + '" alt="">'
+          +   '<span class="no">' + (i + 1) + '</span>'
+          +   (it.big ? '<span class="big">大图</span>' : '')
+          +   (it.status ? '<span class="st' + (it.stErr ? ' err' : '') + '">' + it.status + '</span>' : '')
+          +   '<button type="button" class="x" data-del="' + it.id + '" title="移除这张">×</button>'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+function setThumbStatus(it){
+  var el = $('thumbs').querySelector('.thumb[data-id="' + it.id + '"]');
+  if(!el) return;
+  var st = el.querySelector('.st');
+  if(!it.status){
+    if(st && st.parentNode) st.parentNode.removeChild(st);
+    return;
+  }
+  if(!st){
+    st = document.createElement('span');
+    el.appendChild(st);
+  }
+  st.className = 'st' + (it.stErr ? ' err' : '');
+  st.textContent = it.status;
+}
+function renderList(){
+  var box = $('list');
+  var html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    var v = it.file.size ? fmtSize(it.file.size) : '-';
+    var cls = '', extra = '';
+    if(it.outSize){
+      extra = ' → ' + fmtSize(it.outSize);
+      var d = it.outSize - it.file.size;
+      cls = d > 0 ? ' more' : (d < 0 ? ' less' : '');
+      extra += ' (' + pctText(it.file.size, it.outSize) + ')';
+    }
+    html += '<div class="row' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '">'
+          +   '<span class="rn">' + (i + 1) + '. ' + esc(it.name) + '</span>'
+          +   '<span class="rv">' + it.w + ' × ' + it.h + (it.outW ? (' → ' + it.outW + ' × ' + it.outH) : '') + '</span>'
+          +   '<span class="rv' + cls + '">' + v + extra + '</span>'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+// 只重画某一行（批量处理时不重建整个列表）
+function updateRow(it){
+  var rows = $('list').querySelectorAll('.row');
+  for(var i = 0; i < items.length && i < rows.length; i++){
+    if(items[i].id !== it.id) continue;
+    var row = rows[i];
+    var rvs = row.querySelectorAll('.rv');
+    if(rvs.length < 2) return;
+    // ★ 尺寸那一栏也用真实导出分辨率（it.outW/outH 由 processItem 写入），别只写原图尺寸
+    rvs[0].textContent = items[i].w + ' × ' + items[i].h
+      + (items[i].outW ? (' → ' + items[i].outW + ' × ' + items[i].outH) : '');
+    rvs[1].textContent = fmtSize(it.file.size) + (it.outSize ? (' → ' + fmtSize(it.outSize) + ' (' + pctText(it.file.size, it.outSize) + ')') : '');
+    var d = it.outSize ? it.outSize - it.file.size : 0;
+    rvs[1].className = 'rv' + (d > 0 ? ' more' : (d < 0 ? ' less' : ''));
+    return;
+  }
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]; }); }
+
+/* ===================== 分段按钮 / 九宫格 ===================== */
+function bindSeg(id, onPick, noBusy){
+  var box = $(id);
+  if(!box) return;
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || (busy && !noBusy)) return;
+    var kids = box.querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++) kids[i].classList.remove('on');
+    b.classList.add('on');
+    onPick(b.getAttribute('data-v'));
+  });
+}
+function bindPad(id, onPick){
+  var box = $(id);
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || busy) return;
+    var kids = box.querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++) kids[i].classList.remove('on');
+    b.classList.add('on');
+    onPick(b.getAttribute('data-v'));
+  });
+}
+function segVal(id){
+  var b = $(id).querySelector('button.on');
+  return b ? b.getAttribute('data-v') : '';
+}
+function padVal(id){
+  var box = $(id);
+  if(!box || !box.querySelector) return 'mc';
+  var b = box.querySelector('button.on');
+  return b ? b.getAttribute('data-v') : 'mc';
+}
+
+/* ===================== 参数读取 ===================== */
+/* 界面顺序：① 裁剪 ② 旋转/翻转 ③ 改尺寸 ④ 水印/文字 ⑤ 输出格式与质量 */
+function readOpts(){
+  return {
+    cropOn: $('cropOn').checked,
+    crop: {
+      mode: segVal('cropMode') || 'box',
+      ratio: segVal('cropRatio') || 'orig',
+      ratioW: +$('cropCw').value, ratioH: +$('cropCh').value,
+      anchor: 'mc',          // 老路径的锚点；伸缩框模式下不用它（框自己带位置）
+      zoom: 100,
+      dx: 0, dy: 0,
+      // 伸缩框（归一化，0~1，相对整张图）：box 存在时优先用它，没有才退回上面那套老参数
+      box: cropBoxSnapshot(),
+      edgePercent: +$('cropEdgePx').value,
+      edgePx: +$('cropEdgeNum').value || 0
+    },
+    rotOn: $('rotOn').checked,
+    rot: {
+      rot90: +segVal('rot90') || 0,
+      angle: +$('rotAngle').value,
+      bg: $('rotBg').value,
+      flipH: $('flipH').checked,
+      flipV: $('flipV').checked
+    },
+    sizeOn: $('sizeOn').checked,
+    size: {
+      mode: segVal('sizeMode') || 'long',
+      longEdge: +$('sizeLong').value,
+      shortEdge: +$('sizeShort').value,
+      w: +$('sizeW').value, h: +$('sizeH').value,
+      percent: +$('sizePct').value,
+      fitW: +$('sizeFitW').value, fitH: +$('sizeFitH').value,
+      quality: segVal('sizeQuality') || 'high',
+      noEnlarge: $('sizeNoUp').checked
+    },
+    wmOn: $('wmOn').checked,
+    wm: {
+      type: segVal('wmType') || 'text',
+      text: $('wmText').value,
+      fontSize: +$('wmSize').value,
+      color: $('wmColor').value,
+      alpha: +$('wmAlpha').value / 100,
+      rotate: +$('wmRot').value,
+      imgScale: +$('wmScale').value,
+      tile: $('wmTile').checked,
+      pos: padVal('pad'),
+      margin: +$('wmMargin').value
+    },
+    outOn: $('outOn').checked,
+    format: segVal('outFmt') || 'keep',
+    formatOn: true,
+    quality: +$('outQ').value,
+    metaStrip: $('metaStrip').checked,
+    targetOn: $('targetOn').checked,
+    targetBytes: targetBytesOf(),
+    bgOn: $('bgOn').checked,
+    bgColor: $('bgColor').value
+  };
+}
+function targetBytesOf(){
+  var v = parseFloat($('targetVal').value);
+  if(!(v > 0)) return 0;
+  return Math.round(v * ($('targetUnit').value === 'MB' ? 1048576 : 1024));
+}
+/* 是不是「一个画面变换都没开」——决定能不能走纯剥元数据的无损路径 */
+function hasTransform(o){
+  return !!(o.cropOn || o.rotOn || o.sizeOn || o.wmOn);
+}
+/* 输出格式：keep → 原格式；否则用选的 */
+function finalFmt(o, it){
+  var t = (o.outOn && o.format && o.format !== 'keep') ? o.format : null;
+  return t || it.fmt;
+}
+/* JPG / WebP 用的画质（0~1） */
+function qualityOf(o){
+  return clampNum(o.quality, QUALITY_MIN, QUALITY_MAX) / 100;
+}
+/* 目标体积模式下，档位从「用户画质」一路降到最低，保证用户设的画质是上限 */
+function qualityLadder(o){
+  var top = Math.round(clampNum(o.quality, QUALITY_MIN, QUALITY_MAX));
+  var qs = [];
+  for(var q = QUALITY_MIN; q <= top; q += 5) qs.push(q);
+  if(qs[qs.length - 1] !== top) qs.push(top);
+  return qs;
+}
+
+/* ===================== 界面联动（开关 / 显隐 / 提示） ===================== */
+function syncVisibility(){
+  var o = readOpts();
+  ['crop', 'rot', 'size', 'wm', 'out'].forEach(function(k){
+    var card = $('card-' + k);
+    var key = { crop:'cropOn', rot:'rotOn', size:'sizeOn', wm:'wmOn', out:'outOn' }[k];
+    card.classList.toggle('off', !$(key).checked);
+  });
+  // 裁剪
+  var cm = segVal('cropMode');
+  $('cropBox').classList.toggle('hidden', cm !== 'box');
+  $('cropEdge').classList.toggle('hidden', cm !== 'edge');
+  $('cropCustomWrap').classList.toggle('hidden', segVal('cropRatio') !== 'custom');
+  $('cropUseAll').classList.toggle('hidden', cm !== 'box');
+  // 尺寸
+  var sm = segVal('sizeMode');
+  $('sizeLongWrap').classList.toggle('hidden', sm !== 'long');
+  $('sizeShortWrap').classList.toggle('hidden', sm !== 'short');
+  $('sizeWhWrap').classList.toggle('hidden', sm !== 'wh');
+  $('sizePctWrap').classList.toggle('hidden', sm !== 'pct');
+  $('sizeFitWrap').classList.toggle('hidden', sm !== 'fit');
+  $('sizeHint').textContent = (sm === 'wh' || sm === 'pct')
+    ? '这两种模式里原图有可能比目标小，勾上「不放大」就会保持原尺寸不动。'
+    : '按长边 / 按短边 / 装在框内，这几种模式本来就只会缩、不会放大，不存在「放不放大」的问题。';
+  // 水印（只有一个"加水印"模式，文字 / 图片两种）
+  $('wmTextWrap').classList.toggle('hidden', segVal('wmType') !== 'text');
+  $('wmImageWrap').classList.toggle('hidden', segVal('wmType') !== 'image');
+  $('pad').classList.toggle('dis', $('wmTile').checked);
+  // 输出格式
+  var f = segVal('outFmt');
+  $('outQWrap').classList.toggle('hidden', f === 'png');
+  // 目标体积输入框**常显**：未勾选时只有淡化 + 提示，不再隐藏
+  //（用户反馈：不勾就看不见，不知道还有这项功能）。
+  // 刻意**不禁用**输入：用户可以先填好体积、再打开开关，不影响任何行为。
+  $('targetWrap').classList.toggle('dim', !$('targetOn').checked);
+  $('targetWrap').classList.remove('hidden');
+  var tNote = $('targetNote');
+  if(tNote) tNote.classList.toggle('hidden', $('targetOn').checked);
+  $('bgWrap').classList.toggle('hidden', !$('bgOn').checked);
+  $('bgHint').innerHTML = $('bgOn').checked
+    ? 'JPG 不支持透明。勾上了这个开关：透明处会填成你选的<b>' + colorName($('bgColor').value) + '</b>。'
+    : 'JPG 不支持透明。没勾这个开关时，透明处默认填<b>白色</b>。想换成别的底（比如浅灰）就在上面打勾。';
+  updateFmtTable(f);
+  // 后缀示例
+  var it = selItem();
+  var sfx = $('suffix').value;
+  var ex = it ? (it.base + sfx + '.' + extOfFmt(finalFmt(o, it))) : ('照片' + sfx + '.jpg');
+  $('suffixHint').innerHTML = '例如原图 <b>照片.jpg</b> → 输出 <b>' + esc(ex) + '</b>；后缀可以改成你自己喜欢的（留空就是不加后缀，重名会自动加序号）。';
+  // 收起态的摘要要在每次界面变动后跟着刷新（它只读显示，不参与任何计算）
+  updateSummaries();
+  // 参数一旦变动就（防抖）记下来，下次打开自动恢复
+  if(typeof saveSettingsSoon === 'function') saveSettingsSoon();
+}
+function updateFmtTable(f){
+  var rows = $('fmtTbl').querySelectorAll('tr[data-row]');
+  var it = selItem();
+  var srcFmt = it ? it.fmt : '';
+  for(var i = 0; i < rows.length; i++){
+    var key = rows[i].getAttribute('data-row');
+    rows[i].classList.toggle('hot', !!srcFmt && key.indexOf(srcFmt === 'jpeg' ? 'jpg' : srcFmt) === 0);
+  }
+  var t = (f === 'keep') ? (srcFmt || 'jpeg') : f;
+  var o = readOpts();
+  var parts = [];
+  parts.push('这张图会输出成 <b>' + labelOfFmt(t) + '</b>：' + lossNote(srcFmt || t, t, hasTransform(o)) + '。');
+  parts.push('「画面原封不动，只剥元数据」这一列，指的是<b>上面 2 ~ 5 步一个都没启用</b>、你只勾了「剥掉元数据」—— 这时候直接在原始文件字节上动刀，一个像素都不重新编码。');
+  if(!hasTransform(o) && !o.metaStrip){
+    parts.push('<b>现在六个步骤一个都没启用、也没勾「剥掉元数据」</b>：点开始只会把每张图重新存一遍（格式不变，但 JPG / WebP 会再压一次、画质略降）。');
+  }
+  if(f !== 'png' && !$('outQWrap').classList.contains('hidden')){
+    parts.push('当前画质 ' + $('outQ').value + '：数值越低体积越小、画质越差，一般 80 ~ 90 就够用。');
+  }
+  if($('targetOn').checked && targetBytesOf() && t === 'png'){
+    parts.push('<b>注意：目标格式是 PNG，PNG 压不动画质，压到指定体积只能靠缩小尺寸实现。</b>');
+  }
+  parts.push('JPG / WebP 作目标时，只要重新编码就必然再掉一次画质（PNG 转 WebP 也一样，因为浏览器编码 WebP 走的是「画质」参数）。');
+  parts.push('格式转换会让体积发生变化，JPG / WebP 转 PNG 通常<b>变大</b>，PNG 转 JPG 通常<b>变小</b>，这是正常的。');
+  $('fmtNote').innerHTML = parts.join('<br>');
+}
+
+/* 水印绘制相关的函数都搬进了下面的 IMG-ENGINE 段（便于整段抽出单测） */
+
+/* ==== IMG-ENGINE-START ==== */
+/* 处理引擎：用到浏览器绘图 API，但**不**依赖真实的 DOM 结构。
+   为了让开发脚本能在 Node 里把这整段抽出来真跑一遍（而不是复制一份代码来测），
+   下面这一段在检测到没有 document 时会装一个极简 canvas 替身。
+   浏览器里 typeof document !== 'undefined'，所以这段判断永远进不去。
+   新增能力请放进这一段，并在段末的导出清单里补一行。 */
+if(typeof document === 'undefined' && typeof globalThis !== 'undefined' && !globalThis.__IMG_ENGINE_DOM__){
+  globalThis.__IMG_ENGINE_DOM__ = true;
+  var __stubCtx = {
+    canvas: null,
+    imageSmoothingEnabled: true, imageSmoothingQuality: 'low',
+    globalAlpha: 1, fillStyle: '#000', strokeStyle: '#000', font: '10px sans-serif',
+    textAlign: 'start', textBaseline: 'alphabetic', lineJoin: 'miter', miterLimit: 10, lineWidth: 1,
+    shadowColor: 'rgba(0,0,0,0)', shadowBlur: 0, shadowOffsetX: 0, shadowOffsetY: 0,
+    save: function(){}, restore: function(){}, translate: function(){}, rotate: function(){},
+    scale: function(){}, setTransform: function(){}, clearRect: function(){}, fillRect: function(){},
+    drawImage: function(){}, beginPath: function(){}, closePath: function(){}, fill: function(){},
+    stroke: function(){}, moveTo: function(){}, lineTo: function(){}, arc: function(){},
+    fillText: function(){}, strokeText: function(){}, createPattern: function(){ return null; },
+    measureText: function(s){
+      var mm = /(\d+(?:\.\d+)?)px/.exec(this.font);
+      var fs = mm ? parseFloat(mm[1]) : 10;
+      if(!(fs > 0)) fs = 10;
+      return { width: String(s === undefined ? '' : s).length * fs * 0.6,
+               actualBoundingBoxAscent: fs * 0.8, actualBoundingBoxDescent: fs * 0.2 };
+    }
+  };
+  globalThis.document = {
+    createElement: function(tag){
+      if(tag === 'canvas'){
+        var c = { width: 1, height: 1, style: {} };
+        c.getContext = function(){ __stubCtx.canvas = c; return __stubCtx; };
+        // 假编码：体积 = 画布像素数 × 画质 × 系数，用真的 Blob 包起来
+        // （这样 .size / .type / .arrayBuffer() 都是真的，开发脚本能接着往下验）
+        c.toBlob = function(cb, type, q){
+          var f = (typeof q === 'number') ? q : 1;
+          var size = Math.round(c.width * c.height * 0.1 * f) + 100;
+          setTimeout(function(){ cb(new Blob([new Uint8Array(size)], { type: type || 'image/png' })); }, 0);
+        };
+        c.toDataURL = function(){ return 'data:,'; };
+        return c;
+      }
+      return { style: {}, appendChild: function(){}, removeChild: function(){} };
+    },
+    addEventListener: function(){},
+    getElementById: function(){
+      return { value: '', checked: false, textContent: '', innerHTML: '', style: {} };
+    }
+  };
+  if(typeof globalThis.window === 'undefined') globalThis.window = globalThis;
+}
+
+/* ===================== 解码 ===================== */
+/* 优先 createImageBitmap（显式要求按 EXIF 方向解码），失败再退回 <img>。
+   release* 用来「处理完立刻放手」，避免批量处理时内存越吃越多。 */
+function releaseBmp(b){
+  if(!b) return;
+  if(typeof b.close === 'function'){ try{ b.close(); }catch(e){} }
+  else if(b.tagName === 'IMG'){ b.src = ''; }
+}
+function releaseCanvas(c){
+  if(!c) return;
+  try{ c.width = 0; c.height = 0; }catch(e){}
+}
+function decodeViaImg(file){
+  return new Promise(function(res, rej){
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function(){ URL.revokeObjectURL(url); res(img); };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('这张图片打不开')); };
+    img.src = url;
+  });
+}
+function decodeFile(file){
+  if(window.createImageBitmap){
+    return createImageBitmap(file, { imageOrientation:'from-image' })
+      .catch(function(){ return createImageBitmap(file); })
+      .catch(function(){ return decodeViaImg(file); });
+  }
+  return decodeViaImg(file);
+}
+
+/* ===================== 水印绘制（沿用 batch-watermark 的做法） ===================== */
+var measureCanvas = null;
+function measureCtx(){
+  if(!measureCanvas){ measureCanvas = document.createElement('canvas'); measureCanvas.width = 8; measureCanvas.height = 8; }
+  return measureCanvas.getContext('2d');
+}
+/* 算出文字水印的包围盒（不真画），返回 {bw, bh, fontPx, lines, lineH, font} 或 null */
+function measureBlock(o, short, W, drawOnly){
+  var ctx = measureCtx();
+  var sig = o.type === 'text' ? o.text : '';
+  if(!sig || !sig.length) return null;
+  var fs = Math.max(6, short * clampNum(o.fontSize, 1, 60) / 100);
+  // drawOnly（导出）永远不加下限，严格按短边百分比；预览才会用 fontFloorPx 兜一个可见下限
+  if(drawOnly && o.fontFloorPx > 0) fs = Math.max(fs, o.fontFloorPx * short);
+  var f2 = '700 ' + fs.toFixed(2) + 'px ' + FONT_STACK;
+  ctx.save();
+  ctx.font = f2;
+  var w2 = ctx.measureText(sig).width;
+  ctx.restore();
+  if(!isFinite(w2) || w2 <= 0) return null;
+  return { bw: w2, bh: fs * 1.25, fontPx: fs, lines: [sig], lineH: fs * 1.25, font: f2 };
+}
+/* drawOnly=true 表示「这次是真导出」，字号严格按短边百分比算（预览专用下限不生效） */
+function drawWatermark(ctx, W, H, o, bmp, drawOnly){
+  var short = Math.min(W, H);
+  var wm = o.wm;
+  var floor = (wm && wm.fontFloorPx) || 0;
+  var useImage = (wm.type === 'image');
+  var bw, bh, paint, rad, alpha;
+  if(useImage){
+    if(!bmp) return false;
+    var iw = bmp.width || 1, ih = bmp.height || 1;
+    bw = Math.max(4, short * clampNum(wm.imgScale, 1, 200) / 100);
+    bh = bw * ih / iw;
+    rad = wm.rotate * Math.PI / 180;
+    alpha = wm.alpha;
+    paint = function(c){ c.drawImage(bmp, -bw / 2, -bh / 2, bw, bh); };
+  } else {
+    var mb = measureBlock({ type:'text', text: wm.text, fontSize: wm.fontSize, fontFloorPx: floor }, short, W, drawOnly);
+    if(!mb) return false;
+    bw = mb.bw; bh = mb.bh;
+    rad = wm.rotate * Math.PI / 180;
+    alpha = wm.alpha;
+    var lineH = mb.lineH, font = mb.font, lines = mb.lines;
+    paint = function(c){
+      c.font = font;
+      c.textBaseline = 'middle';
+      c.textAlign = 'center';
+      c.fillStyle = wm.color;
+      for(var j = 0; j < lines.length; j++) c.fillText(lines[j], 0, (j - (lines.length - 1) / 2) * lineH);
+    };
+  }
+
+  var m = short * clampNum(wm.margin, 0, 40) / 100;
+  var pos = posToXY(W, H, bw, bh, m, wm.pos);
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.01, Math.min(1, alpha));
+  if(wm.tile){
+    var diag = Math.sqrt(W * W + H * H);
+    var stepX = bw + Math.max(bw * 0.55, bh * 0.4);
+    var stepY = bh + Math.max(bh * 0.85, bh * 0.5);
+    ctx.translate(W / 2, H / 2);
+    if(!drawOnly) ctx.rotate(rad);
+    var half = diag / 2;
+    for(var y = -half; y <= half + stepY; y += stepY){
+      for(var x = -half; x <= half + stepX; x += stepX){
+        ctx.save();
+        ctx.translate(x, y);
+        paint(ctx);
+        ctx.restore();
+      }
+    }
+  } else {
+    ctx.translate(pos.x + bw / 2, pos.y + bh / 2);
+    if(!drawOnly) ctx.rotate(rad);
+    paint(ctx);
+  }
+  ctx.restore();
+  return true;
+}
+/* hasWatermarkContent / wmFontFloorPx 放在下面的 IMG-ENGINE 段里 */
+/* ===================== 几何 + 绘制（普通模式与预览共用） ===================== */
+/* 图片水印（透明底 PNG 之类）。引擎内部自己持有，UI 通过 setWatermarkImage 换，
+   不直接读外面的变量 —— 这样这一段能被开发脚本整段抽出来真跑。 */
+if(typeof wmBitmap === 'undefined') var wmBitmap = null;
+var wmBitmapName = '';
+function setWatermarkImage(bmp, name){ wmBitmap = bmp || null; wmBitmapName = name || ''; }
+function getWatermarkImage(){ return wmBitmap; }
+function hasWatermarkContent(o){
+  if(o.wm.type === 'image') return !!wmBitmap;
+  return String(o.wm.text || '').replace(/\s/g, '').length > 0;
+}
+/* 预览时给字号设一个下限（按画布短边的比例），否则大图缩到屏幕上小水印根本看不见。
+   导出时 o.preview 不为真 → 返回 0，也就是严格按短边百分比算。 */
+function wmFontFloorPx(o, W, H){
+  if(!o.preview) return 0;
+  return 0.035;
+}
+function smoothingOf(q){
+  if(q === 'low') return { on:false, q:'low' };
+  if(q === 'medium') return { on:true, q:'medium' };
+  return { on:true, q:'high' };
+}
+function applySmoothing(ctx, quality){
+  var sm = smoothingOf(quality);
+  ctx.imageSmoothingEnabled = sm.on;
+  try{ ctx.imageSmoothingQuality = sm.q; }catch(e){}
+  return sm;
+}
+function newCanvas(w, h){
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+function blit(src, sw, sh, dw, dh, quality, bg){
+  var c = newCanvas(dw, dh);
+  var ctx = c.getContext('2d');
+  applySmoothing(ctx, quality);
+  if(bg){ ctx.fillStyle = bg; ctx.fillRect(0, 0, c.width, c.height); }
+  ctx.drawImage(src, 0, 0, sw, sh, 0, 0, c.width, c.height);
+  return c;
+}
+/* 当前这张图，走完 ①②③ 之后长什么样（不含水印和编码）。
+   ⚠️ 关键：几何必须按**实际传进来的画布尺寸** srcW/srcH 算，不能按 it.w/it.h。
+   预览画布是缩小过的（例如原图 3376×1440 → 预览 1000×427），如果这里用原图尺寸算裁剪矩形，
+   再拿这个矩形去小画布上取源，就会只取到右边一小条、其余全透明（"预览在骗人"的经典 bug）。
+   传 srcW/srcH 之后，同一套公式在两个尺度上算出的**相对位置与比例完全一致**，预览就是导出的样子。 */
+function geometryPlan(it, o, srcW, srcH, forceCropRect){
+  var w = Math.max(1, Math.round(srcW || it.w)), h = Math.max(1, Math.round(srcH || it.h));
+  var c = { mode:'none' };
+  if(o.cropOn){
+    var r = forceCropRect ? normToRect(rectToNorm(forceCropRect, w, h), w, h, ratioOf(o.crop, w, h))
+                          : cropRect(w, h, o.crop);
+    if(!(r.x === 0 && r.y === 0 && r.w === w && r.h === h)){
+      c = { mode:'crop', rect:r };
+      w = r.w; h = r.h;
+    }
+  }
+  var rot = { mode:'none' };
+  if(o.rotOn){
+    var steps = ((Math.round(o.rot.rot90 / 90) % 4) + 4) % 4 * 90;
+    var a = (steps + clampNum(o.rot.angle, -180, 180)) % 360;
+    if(a < 0) a += 360;
+    var flipH = o.rot.flipH, flipV = o.rot.flipV;
+    if(a !== 0 || flipH || flipV){
+      rot = { mode:'rot', angle:a, flipH:flipH, flipV:flipV, bg:o.rot.bg };
+      var rd = rotateDims(w, h, a);
+      w = rd.w; h = rd.h;
+    }
+  }
+  var sz = { mode:'none' };
+  if(o.sizeOn){
+    var d = dimsFor(w, h, o.size);
+    if(d.w !== w || d.h !== h){
+      sz = { mode:'size', w:d.w, h:d.h, quality:o.size.quality };
+      w = d.w; h = d.h;
+    }
+  }
+  return { crop:c, rot:rot, size:sz, w:w, h:h };
+}
+/* 把「几何 + 水印」画进一张画布，返回画布。
+   顺序严格是：裁剪 → 旋转/翻转 → 改尺寸 → 水印/文字
+   forceCropRect：调用方已经算好了裁剪矩形（**原图口径**）时传进来，预览就按它等比缩放到
+   预览画布上取源 —— 这样"预览看到的裁剪范围"与"真正导出的裁剪矩形"完全一致，
+   而不会各自按自己的画布尺寸再解一次（那会在取整上分叉）。 */
+function renderPipeline(src, srcW, srcH, o, it, forceCropRect){
+  var plan = geometryPlan(it, o, srcW, srcH, forceCropRect);
+  var cur = null, cw = srcW, ch = srcH;
+
+  if(plan.crop.mode === 'crop'){
+    var r = plan.crop.rect;
+    cur = newCanvas(r.w, r.h);
+    var cctx = cur.getContext('2d');
+    cctx.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    cw = r.w; ch = r.h;
+  }
+  if(plan.rot.mode === 'rot'){
+    var rd = rotateDims(cw, ch, plan.rot.angle);
+    var out = newCanvas(rd.w, rd.h);
+    var oc = out.getContext('2d');
+    applySmoothing(oc, o.size.quality);
+    oc.fillStyle = plan.rot.bg || '#ffffff';
+    oc.fillRect(0, 0, rd.w, rd.h);
+    oc.translate(rd.w / 2, rd.h / 2);
+    oc.rotate(plan.rot.angle * Math.PI / 180);
+    oc.scale(plan.rot.flipH ? -1 : 1, plan.rot.flipV ? -1 : 1);
+    oc.drawImage(cur || src, -cw / 2, -ch / 2, cw, ch);
+    if(cur) releaseCanvas(cur);
+    cur = out; cw = rd.w; ch = rd.h;
+  }
+  if(plan.size.mode === 'size'){
+    var nxt = blit(cur || src, cw, ch, plan.size.w, plan.size.h, plan.size.quality, null);
+    if(cur) releaseCanvas(cur);
+    cur = nxt; cw = plan.size.w; ch = plan.size.h;
+  }
+  if(o.wmOn && hasWatermarkContent(o)){
+    if(!cur){ cur = blit(src, srcW, srcH, srcW, srcH, 'high', null); cw = srcW; ch = srcH; }
+    var wctx = cur.getContext('2d');
+    // 把「预览字号下限」塞进水印参数里，drawWatermark 自己会判断要不要用
+    var wmOpt = { mode:o.wm.mode, fontFloorPx: wmFontFloorPx(o, cw, ch) };
+    for(var wk in o.wm) if(Object.prototype.hasOwnProperty.call(o.wm, wk)) wmOpt[wk] = o.wm[wk];
+    drawWatermark(wctx, cw, ch, { wm: wmOpt, mode:o.wm.mode }, wmBitmap, true);
+  }
+  if(!cur){
+    cur = blit(src, srcW, srcH, srcW, srcH, 'high', null);
+    cw = srcW; ch = srcH;
+  }
+  return { canvas: cur, w: cw, h: ch, plan: plan };
+}
+/* ★★ 单一事实源：这张图**最终导出**的像素尺寸（按原图尺寸算，不是预览画布尺寸）。
+   所有"显示给用户看"的尺寸数字都必须从这里拿 ——
+   曾经 ⑦ 预览信息行用的是预览管线的输出（3376×1440 的图 + 1:1 裁剪 → 显示 427×427），
+   而真实导出是 1440×1440，用户一眼就看出对不上。 */
+function finalExportSize(it, o){
+  if(!it) return null;
+  var plan = geometryPlan(it, o, it.w, it.h);
+  return { w: plan.w, h: plan.h, plan: plan };
+}
+/* ★★ 「原图口径」的裁剪矩形 —— 导出、② 摘要、② 信息行、⑦ 预览**全部以它为准**。
+   ⚠️ 这里必须用**原图尺寸**去解裁剪框：框的归一化宽高是"跟画布尺寸相关"的，
+   同一份框在预览画布（1000×427）上解和在原图（3376×1440）上解，得到的像素矩形完全不同。
+   以前预览管线自己按预览画布解一次，于是 1:1 裁剪在预览里根本没生效
+   （引擎判定"裁出来就是整张图"→ 跳过裁剪 → 显示 3376×1440），而导出是正确的 1440×1440。 */
+function finalCropRectOf(it, o){
+  if(!it || !o.cropOn) return null;
+  var W = Math.max(1, Math.round(it.w)), H = Math.max(1, Math.round(it.h));
+  return cropRect(W, H, o.crop);
+}
+/* 把一个"在某块画布尺寸下算出来的矩形"等比映射到另一块画布上（预览用）。
+   只做等比缩放，**不再重新解一次裁剪框**，所以预览的范围与导出严格一致。 */
+function mapRectTo(sourceRect, srcW, srcH, dstW, dstH){
+  if(!sourceRect) return null;
+  var W1 = Math.max(1, Math.round(srcW)), H1 = Math.max(1, Math.round(srcH));
+  var W2 = Math.max(1, Math.round(dstW)), H2 = Math.max(1, Math.round(dstH));
+  var sx = W2 / W1, sy = H2 / H1;
+  return {
+    x: Math.round(sourceRect.x * sx),
+    y: Math.round(sourceRect.y * sy),
+    w: Math.max(1, Math.round(sourceRect.w * sx)),
+    h: Math.max(1, Math.round(sourceRect.h * sy))
+  };
+}
+
+/* ===================== 编码 / 目标体积 ===================== */
+function canvasToBlob(c, type, q){
+  return new Promise(function(res, rej){
+    if(!c.toBlob){ rej(new Error('这个浏览器不支持导出图片')); return; }
+    try{
+      c.toBlob(function(b){ b ? res(b) : rej(new Error('导出失败（可能是尺寸超出浏览器上限）')); }, type, q);
+    }catch(e){ rej(new Error('导出失败：' + e.message)); }
+  });
+}
+function encodeAt(canvas, type, q, bg){
+  var c = canvas;
+  if(type === 'image/jpeg'){
+    var tmp = newCanvas(canvas.width, canvas.height);
+    var tc = tmp.getContext('2d');
+    tc.fillStyle = bg || '#ffffff';
+    tc.fillRect(0, 0, tmp.width, tmp.height);
+    tc.drawImage(canvas, 0, 0);
+    c = tmp;
+  }
+  return canvasToBlob(c, type, q).then(function(b){
+    if(c !== canvas) releaseCanvas(c);
+    return b;
+  });
+}
+/* 目标体积：在画质档位里二分，压不到就回退到最小那张并如实说明。
+   doEncode(quality) → Promise<{size, blob}> 由调用方提供（第 4 个参数用真实编码） */
+function encodeToTargetSize(canvas, type, o, bg, doEncode){
+  var target = o.targetBytes;
+  var encode = doEncode || function(q){
+    return encodeAt(canvas, type, q / 100, bg).then(function(b){ return { size: b.size, blob: b }; });
+  };
+  var qs = qualityLadder(o);
+  return new Promise(function(resolve, reject){
+    // 先试一次用户设的最高画质：要是本来就够小，就别白降画质
+    encode(qs[qs.length - 1]).then(function(first){
+      if(first.size <= target){
+        resolve({ blob: first.blob, size: first.size, quality: qs[qs.length - 1], hit: true,
+                  note: '画质 ' + qs[qs.length - 1] + ' → ' + fmtSize(first.size) + '，已经达到目标' });
+        return null;
+      }
+      return searchTargetSizeAsync(qs, target, encode).then(resolve);
+    }).catch(reject);
+  });
+}
+/* 同步二分的 Promise 版（逻辑与 PURE-CORE 里的 searchTargetSize 一致） */
+function searchTargetSizeAsync(qualities, targetBytes, probe){
+  var qs = qualities.slice().sort(function(a, b){ return a - b; });
+  return new Promise(function(resolve, reject){
+    var best = null, smallest = null, lo = 0, hi = qs.length - 1, iters = 0;
+    function step(){
+      if(lo > hi || iters >= 24){
+        if(best){
+          resolve({ blob: best.blob, size: best.size, quality: best.quality, hit: true,
+                    note: '画质 ' + best.quality + ' → ' + fmtSize(best.size) + '，达到了目标' });
+        } else {
+          var fb = smallest;
+          resolve({ blob: fb ? fb.blob : null, size: fb ? fb.size : 0, quality: fb ? fb.quality : qs[0], hit: false,
+                    note: '已压到 ' + fmtSize(fb ? fb.size : 0) + '（未能达到目标 ' + fmtSize(targetBytes) + '：画质已经降到最低 ' + qs[0] + '，再降就糊得没法看了）' });
+        }
+        return;
+      }
+      var mid = (lo + hi) >> 1, q = qs[mid];
+      iters++;
+      Promise.resolve(probe(q, iters)).then(function(r){
+        if(!smallest || r.size < smallest.size) smallest = { blob: r.blob, size: r.size, quality: q };
+        if(r.size <= targetBytes){ best = { blob: r.blob, size: r.size, quality: q }; lo = mid + 1; }
+        else { hi = mid - 1; }
+        step();
+      }).catch(reject);
+    }
+    step();
+  });
+}
+
+/* ===================== 元数据剥离（复用 img-compress 的字节级做法） ===================== */
+/* ==== META-ENGINE-START ==== */
+/* 字节读取小工具与格式嗅探：EXIF 探测（界面显示）和元数据剥离都要用，放这里
+   （extOf 在上面 PURE-CORE 段，本段也要用） */
+function u16be(u8, p){ return (u8[p] << 8) | u8[p+1]; }
+function u32be(u8, p){ return u8[p]*16777216 + ((u8[p+1] << 16) | (u8[p+2] << 8) | u8[p+3]); }
+function u32le(u8, p){ return u8[p] + (u8[p+1] << 8) + (u8[p+2] << 16) + u8[p+3]*16777216; }
+function sniffFormat(u8){
+  if(u8.length > 3 && u8[0] === 0xFF && u8[1] === 0xD8 && u8[2] === 0xFF) return 'jpeg';
+  if(u8.length > 8 && u8[0] === 0x89 && u8[1] === 0x50 && u8[2] === 0x4E && u8[3] === 0x47) return 'png';
+  if(u8.length > 12 && u8[0] === 0x52 && u8[1] === 0x49 && u8[2] === 0x46 && u8[3] === 0x46 &&
+     u8[8] === 0x57 && u8[9] === 0x45 && u8[10] === 0x42 && u8[11] === 0x50) return 'webp';
+  return 'unknown';
+}
+function exifOrientation(u8, segStart, segEnd){
+  var p = segStart + 4;
+  if(p + 6 > segEnd) return 0;
+  if(!(u8[p] === 0x45 && u8[p+1] === 0x78 && u8[p+2] === 0x69 && u8[p+3] === 0x66)) return 0;
+  p += 6;
+  if(p + 8 > segEnd) return 0;
+  var le = u8[p + 1] === 0x49;
+  var rd16 = function(q){ return le ? (u8[q] | (u8[q+1] << 8)) : u16be(u8, q); };
+  var rd32 = function(q){ return le ? u32le(u8, q) : u32be(u8, q); };
+  if(rd16(p + 2) !== 42) return 0;
+  var ifd = p + rd32(p + 4);
+  if(ifd + 2 > segEnd) return 0;
+  var cnt = rd16(ifd);
+  if(cnt > 512) cnt = 512;
+  for(var i = 0; i < cnt; i++){
+    var e = ifd + 2 + i * 12;
+    if(e + 12 > segEnd) break;
+    if(rd16(e) === 0x0112) return rd16(e + 8);
+  }
+  return 0;
+}
+function stripJpegMetadata(u8){
+  if(u8.length < 4 || u8[0] !== 0xFF || u8[1] !== 0xD8) throw new Error('不是有效的 JPEG 文件');
+  var parts = [u8.subarray(0, 2)];
+  var p = 2, dropped = 0, n = u8.length;
+  while(p + 1 < n){
+    if(u8[p] !== 0xFF) break;
+    var marker = u8[p+1];
+    if(marker === 0xFF){ p++; continue; }
+    if(marker === 0xD9){ parts.push(u8.subarray(p, p + 2)); p += 2; break; }
+    if(marker === 0xDA){ parts.push(u8.subarray(p, n)); p = n; break; }
+    if(marker >= 0xD0 && marker <= 0xD7){ parts.push(u8.subarray(p, p + 2)); p += 2; continue; }
+    if(marker === 0x01){ parts.push(u8.subarray(p, p + 2)); p += 2; continue; }
+    if(p + 4 > n) break;
+    var len = u16be(u8, p + 2);
+    if(len < 2 || p + 2 + len > n) break;
+    var segEnd = p + 2 + len;
+    // APP0(JFIF) 保留；APP1..APP15、COM 全是元数据，丢掉
+    var droppable = marker === 0xFE || (marker >= 0xE1 && marker <= 0xEF);
+    if(droppable){
+      dropped += len + 2;
+      p = segEnd;
+      continue;
+    }
+    parts.push(u8.subarray(p, segEnd));
+    p = segEnd;
+  }
+  if(dropped === 0) return { blob: new Blob([u8], { type: 'image/jpeg' }), changed: false, note: '' };
+  return { blob: new Blob(parts, { type: 'image/jpeg' }), changed: true, note: '剥掉元数据 ' + fmtSize(dropped) };
+}
+function stripWebpMetadata(u8){
+  if(u8.length < 16) throw new Error('不是有效的 WebP 文件');
+  var chunks = [], p = 12, hasVp8x = false;
+  while(p + 8 <= u8.length){
+    var fourcc = String.fromCharCode(u8[p], u8[p+1], u8[p+2], u8[p+3]);
+    var size = u32le(u8, p + 4);
+    var ds = p + 8, de = ds + size;
+    if(de > u8.length) break;
+    var full = de + (size % 2);
+    chunks.push({ fourcc: fourcc, start: p, end: Math.min(full, u8.length), ds: ds, de: de });
+    if(fourcc === 'VP8X') hasVp8x = true;
+    p = full;
+  }
+  if(!hasVp8x) return { blob: new Blob([u8], { type: 'image/webp' }), changed: false, note: '' };
+  var body = [], dropped = 0;
+  for(var i = 0; i < chunks.length; i++){
+    var c = chunks[i];
+    if(c.fourcc === 'EXIF' || c.fourcc === 'XMP'){ dropped += c.end - c.start; continue; }
+    if(c.fourcc === 'VP8X'){
+      var d = u8.slice(c.ds, c.de);
+      d[0] = d[0] & ~0x08 & ~0x04;
+      body.push(webpChunk('VP8X', d));
+      continue;
+    }
+    body.push(u8.subarray(c.start, c.end));
+  }
+  if(!dropped) return { blob: new Blob([u8], { type: 'image/webp' }), changed: false, note: '' };
+  var bodyLen = 0;
+  for(var j = 0; j < body.length; j++) bodyLen += body[j].length;
+  var head = new Uint8Array(12);
+  head[0] = 0x52; head[1] = 0x49; head[2] = 0x46; head[3] = 0x46;
+  new DataView(head.buffer).setUint32(4, bodyLen + 4, true);
+  head[8] = 0x57; head[9] = 0x45; head[10] = 0x42; head[11] = 0x50;
+  return { blob: new Blob([head].concat(body), { type: 'image/webp' }), changed: true, note: '剥掉元数据 ' + fmtSize(dropped) };
+}
+function webpChunk(fourcc, data){
+  var pad = data.length % 2;
+  var out = new Uint8Array(8 + data.length + pad);
+  for(var i = 0; i < 4; i++) out[i] = fourcc.charCodeAt(i);
+  new DataView(out.buffer).setUint32(4, data.length, true);
+  out.set(data, 8);
+  return out;
+}
+function concatBytes(arrs){
+  var n = 0, i;
+  for(i = 0; i < arrs.length; i++) n += arrs[i].length;
+  var out = new Uint8Array(n), o = 0;
+  for(i = 0; i < arrs.length; i++){ out.set(arrs[i], o); o += arrs[i].length; }
+  return out;
+}
+function paeth(a, b, c){
+  var p = a + b - c, pa = Math.abs(p - a), pb = Math.abs(p - b), pc = Math.abs(p - c);
+  if(pa <= pb && pa <= pc) return a;
+  if(pb <= pc) return b;
+  return c;
+}
+/* PNG：丢元数据块 + 重做行滤波 + deflate 重压（真无损，一个像素都不改） */
+async function optimizePng(u8){
+  var sig = [0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A];
+  for(var i = 0; i < 8; i++) if(u8[i] !== sig[i]) throw new Error('不是有效的 PNG 文件');
+  var DROP = { tEXt:1, zTXt:1, iTXt:1, tIME:1, eXIf:1 };
+  var chunks = [], p = 8, ihdr = null, idat = [], metaBytes = 0;
+  while(p + 8 <= u8.length){
+    var len = u32be(u8, p);
+    if(len > u8.length) break;
+    var type = String.fromCharCode(u8[p+4], u8[p+5], u8[p+6], u8[p+7]);
+    var ds = p + 8, de = ds + len;
+    if(de + 4 > u8.length) break;
+    var data = u8.subarray(ds, de);
+    if(type === 'IHDR') ihdr = data;
+    if(type === 'IDAT') idat.push(data);
+    if(DROP[type]) metaBytes += len + 12;
+    chunks.push({ type: type, data: data, drop: !!DROP[type] });
+    p = de + 4;
+    if(type === 'IEND') break;
+  }
+  if(!ihdr) throw new Error('PNG 文件损坏（缺少 IHDR）');
+  var width = u32be(ihdr, 0), height = u32be(ihdr, 4);
+  var bitDepth = ihdr[8], colorType = ihdr[9], compression = ihdr[10], interlace = ihdr[12];
+  var CH = { 0:1, 2:3, 3:1, 4:2, 6:4 };
+  var channels = CH[colorType];
+  var newIdat = null, recompressed = false;
+  var canRe = compression === 0 && interlace === 0 && channels &&
+              width * height <= 16000000 && typeof CompressionStream !== 'undefined';
+  if(canRe){
+    try{
+      var raw = await inflateZlib(idat.length === 1 ? idat[0] : concatBytes(idat));
+      var bpp = Math.max(1, Math.ceil(channels * bitDepth / 8));
+      var stride = Math.ceil(width * channels * bitDepth / 8);
+      if(raw.length === height * (stride + 1)){
+        newIdat = await deflateZlib(pngRefilter(raw, width, height, bpp, stride));
+        recompressed = true;
+      }
+    }catch(e){ recompressed = false; }
+  }
+  var parts = [new Uint8Array(sig)], emitted = false;
+  for(var k = 0; k < chunks.length; k++){
+    var c = chunks[k];
+    if(c.type === 'IDAT'){
+      if(recompressed){ if(!emitted){ parts.push(pngChunk('IDAT', newIdat)); emitted = true; } }
+      else parts.push(pngChunk('IDAT', c.data));
+      continue;
+    }
+    if(c.drop) continue;
+    parts.push(pngChunk(c.type, c.data));
+  }
+  var blob = new Blob(parts, { type: 'image/png' });
+  var bits = [];
+  if(metaBytes) bits.push('剥掉元数据 ' + fmtSize(metaBytes));
+  if(blob.size >= u8.length){
+    return { blob: new Blob([u8], { type: 'image/png' }), changed: false, note: bits.length ? '只剥掉了元数据' : '' };
+  }
+  if(recompressed) bits.push('PNG 重新无损压缩');
+  return { blob: blob, changed: true, note: bits.join(' + ') || 'PNG 重新无损压缩' };
+}
+async function inflateZlib(data){
+  var ds = new DecompressionStream('deflate');
+  var w = ds.writable.getWriter();
+  w.write(data); w.close();
+  return new Uint8Array(await new Response(ds.readable).arrayBuffer());
+}
+async function deflateZlib(data){
+  var cs = new CompressionStream('deflate');
+  var w = cs.writable.getWriter();
+  w.write(data); w.close();
+  return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+function pngChunk(type, data){
+  var out = new Uint8Array(data.length + 12);
+  var dv = new DataView(out.buffer);
+  dv.setUint32(0, data.length, false);
+  for(var i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i);
+  out.set(data, 8);
+  dv.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)), false);
+  return out;
+}
+function pngRefilter(raw, width, height, bpp, stride){
+  var out = new Uint8Array(height * (stride + 1));
+  var bufs = [0,1,2,3,4].map(function(){ return new Uint8Array(stride); });
+  var prev = new Uint8Array(stride), cur = new Uint8Array(stride);
+  for(var y = 0; y < height; y++){
+    var off = y * (stride + 1);
+    var ft = raw[off];
+    for(var x = 0; x < stride; x++){
+      var v = raw[off + 1 + x];
+      var a = x >= bpp ? cur[x - bpp] : 0;
+      var b = prev[x];
+      var c = x >= bpp ? prev[x - bpp] : 0;
+      var r;
+      if(ft === 1) r = v + a;
+      else if(ft === 2) r = v + b;
+      else if(ft === 3) r = v + ((a + b) >> 1);
+      else if(ft === 4) r = v + paeth(a, b, c);
+      else r = v;
+      cur[x] = r & 0xFF;
+    }
+    var bestType = 0, bestScore = Infinity;
+    for(var t = 0; t < 5; t++){
+      var buf = bufs[t], score = 0;
+      for(var xx = 0; xx < stride; xx++){
+        var aa = xx >= bpp ? cur[xx - bpp] : 0;
+        var bb = prev[xx];
+        var cc = xx >= bpp ? prev[xx - bpp] : 0;
+        var vv;
+        if(t === 1) vv = cur[xx] - aa;
+        else if(t === 2) vv = cur[xx] - bb;
+        else if(t === 3) vv = cur[xx] - ((aa + bb) >> 1);
+        else if(t === 4) vv = cur[xx] - paeth(aa, bb, cc);
+        else vv = cur[xx];
+        vv &= 0xFF;
+        buf[xx] = vv;
+        score += vv < 128 ? vv : 256 - vv;
+      }
+      if(score < bestScore){ bestScore = score; bestType = t; }
+    }
+    out[off] = bestType;
+    out.set(bufs[bestType], off + 1);
+    var tmp = prev; prev = cur; cur = tmp;
+  }
+  return out;
+}
+/* ==== META-ENGINE-END ==== */
+
+/* ===================== 单张处理 ===================== */
+function withTimeout(promise, ms, msg){
+  return new Promise(function(res, rej){
+    var t = setTimeout(function(){ rej(new Error(msg || '这一步超时了')); }, ms);
+    promise.then(function(v){ clearTimeout(t); res(v); }, function(e){ clearTimeout(t); rej(e); });
+  });
+}
+/* 只做「剥元数据」的纯字节路径（画面一点不动），失败/无收益返回 null 走重编码 */
+function tryByteStrip(file, it, o){
+  if(!o.metaStrip || hasTransform(o)) return Promise.resolve(null);
+  if(typeof DecompressionStream === 'undefined' && it.fmt === 'png') return Promise.resolve(null);
+  return file.arrayBuffer().then(function(buf){
+    var u8 = new Uint8Array(buf);
+    var kind = sniffFormat(u8);
+    if(kind === 'jpeg') return stripJpegMetadata(u8);
+    if(kind === 'webp') return stripWebpMetadata(u8);
+    if(kind === 'png') return withTimeout(optimizePng(u8), 20000, 'PNG 无损重压超时').catch(function(){ return null; });
+    return null;
+  }).catch(function(){ return null; });
+}
+
+/* 处理一张，返回 Promise<{name,data,ext,fmt,w,h,size,note,lossy,transformed}> */
+function processItem(it, o){
+  return decodeFile(it.file).then(function(bmp){
+    var srcW = bmp.width, srcH = bmp.height;
+    var transformed = hasTransform(o);
+    var tgtFmt = finalFmt(o, it);
+    var formatSame = (tgtFmt === it.fmt);
+
+    // 走「原封不动 + 只剥元数据」的纯字节路径的条件
+    if(!transformed && formatSame && !o.targetOn){
+      return tryByteStrip(it.file, it, o).then(function(r){
+        if(r && r.changed && r.blob && r.blob.size < it.file.size){
+          releaseBmp(bmp);
+          return r.blob.arrayBuffer().then(function(b){
+            return finish(it, new Uint8Array(b), it.fmt, srcW, srcH, r.note, false, false);
+          });
+        }
+        // 没剥出东西（或剥完反而更大）：仍然用已经解码好的画面重新编码一次，
+        // 这样「输出格式与质量」这一块（比如同一格式重存）也真的生效
+        var c = blit(bmp, srcW, srcH, srcW, srcH, o.size.quality, null);
+        releaseBmp(bmp);
+        return finishCanvas(it, c, tgtFmt, o, srcW, srcH, transformed);
+      });
+    }
+
+    var out = renderPipeline(bmp, srcW, srcH, o, it);
+    releaseBmp(bmp);
+    return finishCanvas(it, out.canvas, tgtFmt, o, srcW, srcH, transformed);
+  }).catch(function(err){
+    throw (err && err.message) ? err : new Error('处理失败');
+  });
+}
+/* canvas 一定在成功或失败后都会被释放 */
+function finishCanvas(it, canvas, tgtFmt, o, srcW, srcH, transformed){
+  var type = typeOf(tgtFmt);
+  var q = qualityOf(o);
+  var bg = o.bgColor || '#ffffff';
+
+  function encodeWith(quality0to1, useType, useBg){
+    var c = canvas, tmp = null;
+    if(useType === 'image/jpeg'){
+      tmp = newCanvas(canvas.width, canvas.height);
+      var tc = tmp.getContext('2d');
+      tc.fillStyle = useBg;
+      tc.fillRect(0, 0, tmp.width, tmp.height);
+      tc.drawImage(canvas, 0, 0);
+      c = tmp;
+    }
+    var qq = (useType === 'image/png') ? undefined : quality0to1;
+    return canvasToBlob(c, useType, qq).then(function(b){
+      if(tmp) releaseCanvas(tmp);
+      return b;
+    });
+  }
+
+  var chain;
+  if(o.targetOn && o.targetBytes > 0){
+    if(type === 'image/png'){
+      // PNG 没有画质可降，目标体积只能靠缩尺寸；这里如实说明
+      chain = encodeWith(q, type, bg).then(function(b){
+        var note = (b.size <= o.targetBytes) ? ''
+          : ('已压到 ' + fmtSize(b.size) + '（PNG 是无损格式，压不动画质，未能达到目标 ' + fmtSize(o.targetBytes) + '；想压到目标体积请改用 JPG 或 WebP）');
+        return { blob: b, size: b.size, note: note, hit: b.size <= o.targetBytes, quality: '' };
+      });
+    } else {
+      chain = withTimeout(encodeToTargetSize(canvas, type, o, bg, function(qualityPercent){
+        return encodeWith(qualityPercent / 100, type, bg).then(function(b){ return { size: b.size, blob: b }; });
+      }), 60000, '压到目标体积这一步超时了，已改按当前画质输出');
+    }
+  } else {
+    chain = encodeWith(q, type, bg).then(function(b){
+      return { blob: b, size: b.size, note: '', hit: true, quality: Math.round(q * 100) };
+    });
+  }
+
+  return chain.catch(function(err){
+    releaseCanvas(canvas);
+    throw (err && err.message) ? err : new Error('导出失败');
+  }).then(function(r){
+    if(!r.blob){ releaseCanvas(canvas); throw new Error('导出失败'); }
+    // 输出尺寸要看「真正拿去编码的那块画布」，不是原图尺寸（裁剪 / 旋转 / 改尺寸之后两者不一样）
+    var outW = canvas.width || srcW, outH = canvas.height || srcH;
+    // 万一浏览器编不出目标格式，toBlob 会退回 PNG，这里如实反映（扩展名跟着实际格式走）
+    var actualType = r.blob.type || type;
+    var actualFmt = actualType === 'image/jpeg' ? 'jpeg' : actualType === 'image/webp' ? 'webp' : 'png';
+    releaseCanvas(canvas);
+    return r.blob.arrayBuffer().then(function(buf){
+      var res = finish(it, new Uint8Array(buf), actualFmt, outW, outH, r.note, outputIsLossy(it.fmt, actualFmt, transformed), transformed);
+      res.quality = r.quality;
+      res.hitTarget = r.hit;
+      if(actualFmt !== tgtFmt) res.note = (res.note ? res.note + '；' : '') + '这个浏览器编不出 ' + labelOfFmt(tgtFmt) + '，已自动存成 ' + labelOfFmt(actualFmt);
+      return res;
+    });
+  });
+}
+function finish(it, data, fmt, w, h, note, lossy, transformed){
+  return {
+    name: it.base + ($('suffix').value || '') + '.' + extOfFmt(fmt),
+    data: data, ext: extOfFmt(fmt), fmt: fmt,
+    w: w, h: h, size: data.length, note: note || '', lossy: !!lossy,
+    transformed: !!transformed
+  };
+}
+/* 采样统计「画布上真正被画到」的像素比例（0~1）。
+   用途：确认裁剪 / 旋转 / 改尺寸之后整块画布都被画满了，没有剩下一片透明区域
+   —— 「预览只剩一条」那种 bug 用这个一测就露。为了不拖慢预览，按步长抽样，不逐像素。
+   Node 的 canvas 替身没有 getImageData，那边会返回 -1（表示「测不了」，断言要认这个值）。 */
+function canvasCoverage(c, step){
+  try{
+    if(!c || !c.getContext || !c.width || !c.height) return -1;
+    var ctx = c.getContext('2d');
+    if(!ctx || typeof ctx.getImageData !== 'function') return -1;
+    var st = Math.max(1, Math.round(step || 3));
+    var d = ctx.getImageData(0, 0, c.width, c.height).data;
+    var total = 0, opaque = 0;
+    for(var y = 0; y < c.height; y += st){
+      for(var x = 0; x < c.width; x += st){
+        total++;
+        if(d[(y * c.width + x) * 4 + 3] > 8) opaque++;
+      }
+    }
+    return total ? opaque / total : -1;
+  }catch(e){ return -1; }
+}
+/* 把引擎里值得单测的函数挂到全局（让开发脚本能抽出这一段真跑；浏览器里无副作用）。
+   新增能力时记得在这里补一行。 */
+globalThis.__IMG_BATCH_ENGINE__ = true;
+globalThis.processItem = processItem;
+globalThis.finishCanvas = finishCanvas;
+globalThis.geometryPlan = geometryPlan;
+globalThis.renderPipeline = renderPipeline;
+globalThis.encodeToTargetSize = encodeToTargetSize;
+globalThis.tryByteStrip = tryByteStrip;
+globalThis.newCanvas = newCanvas;
+globalThis.blit = blit;
+globalThis.canvasToBlob = canvasToBlob;
+globalThis.encodeAt = encodeAt;
+globalThis.drawWatermark = drawWatermark;
+globalThis.measureBlock = measureBlock;
+globalThis.canvasCoverage = canvasCoverage;
+/* ==== IMG-ENGINE-END ==== */
+/* ===================== 预览 ===================== */
+function dropPreviewCache(id){
+  var c = previewCache[id];
+  if(!c) return;
+  if(c.url) URL.revokeObjectURL(c.url);
+  if(c.blob) previewBytes -= (c.blob.size || 0);
+  delete previewCache[id];
+}
+function trimPreviewCache(){
+  if(previewBytes <= PREVIEW_CACHE_MAX) return;
+  var ids = Object.keys(previewCache);
+  for(var i = 0; i < ids.length && previewBytes > PREVIEW_CACHE_MAX; i++){
+    if(+ids[i] === selId) continue;
+    dropPreviewCache(ids[i]);
+  }
+}
+function renderTimerTick(){ renderTimer = null; renderPreview(); }
+function scheduleRender(){
+  if(renderTimer) clearTimeout(renderTimer);
+  renderTimer = setTimeout(renderTimerTick, 160);
+}
+function selectItem(id){
+  dropPreviewCache(id);
+  selId = id;
+  releasePrevCanvas();
+  renderThumbs(); renderList(); updateCount();
+  loadPreviewSrc(id);
+  updateExifInfo(); syncVisibility();
+}
+function loadPreviewSrc(id){
+  var token = ++pvToken;
+  var it = byId(id);
+  if(!it){ renderPreview(); return; }
+  var pvph = $('pvphAfter');
+  pvph.classList.remove('hidden');
+  pvph.textContent = '正在载入预览…';
+  $('pvAfter').classList.add('hidden');
+  decodeFile(it.file).then(function(bmp){
+    if(token !== pvToken){ releaseBmp(bmp); return; }
+    var s = Math.min(1, PREVIEW_SIDE / Math.max(bmp.width, bmp.height));
+    var c = newCanvas(Math.max(1, Math.round(bmp.width * s)), Math.max(1, Math.round(bmp.height * s)));
+    var cx = c.getContext('2d');
+    cx.imageSmoothingEnabled = true;
+    try{ cx.imageSmoothingQuality = 'high'; }catch(e){}
+    cx.drawImage(bmp, 0, 0, c.width, c.height);
+    releaseBmp(bmp);
+    releasePrevCanvas();
+    pvSrc = c;
+    renderCropEditor();
+    renderPreview();
+  }).catch(function(){
+    if(token !== pvToken) return;
+    pvSrc = null;
+    $('pvphAfter').classList.remove('hidden');
+    $('pvphAfter').textContent = '这张图片读不出来。如果是 iPhone 的 HEIC 格式，请先在手机「照片」里导出成 JPG；也可能是文件损坏。';
+    $('pvAfter').classList.add('hidden');
+  });
+}
+function renderPreview(){
+  var idx = selIndex(), it = selItem();
+  $('pvindex').innerHTML = items.length ? ('第 <b>' + (idx + 1) + '</b> / 共 <b>' + items.length + '</b> 张') : '第 0 / 共 0 张';
+
+  // 处理前（用导入时生成的 96px 缩略图，浏览器自己缩放显示，不吃内存）
+  if(it){
+    $('pvphBefore').classList.add('hidden');
+    $('pvBefore').classList.remove('hidden');
+    $('pvBefore').src = it.thumb;
+  } else {
+    $('pvphBefore').classList.remove('hidden');
+    $('pvBefore').classList.add('hidden');
+    $('pvBefore').removeAttribute('src');
+  }
+  pvLayout();
+
+  if(!it || !pvSrc){
+    if(!it){
+      $('pvphAfter').classList.remove('hidden');
+      $('pvphAfter').innerHTML = '先在左边打开要执行的步骤<br>这里会显示处理后的样子';
+      $('pvAfter').classList.add('hidden');
+      $('pvinfo').innerHTML = '';
+    }
+    return;
+  }
+  var o = readOpts();
+  o.preview = true;
+  var token = ++renderSeq;
+  var out;
+  try{
+    // ★ 预览必须用「原图口径」的裁剪矩形，再**等比映射**到预览画布上：
+    //   这样预览的裁剪范围与真实导出严格一致，也不会各自按自己的画布再解一次
+    //   （曾经预览自己解一次，导致 1:1 裁剪在预览里整个失效、显示成原图尺寸）。
+    var cropInPreview = o.cropOn
+      ? mapRectTo(finalCropRectOf(it, o), it.w, it.h, pvSrc.width, pvSrc.height)
+      : null;
+    out = renderPipeline(pvSrc, pvSrc.width, pvSrc.height, o, it, cropInPreview);
+  }catch(e){
+    $('pvphAfter').classList.remove('hidden');
+    $('pvphAfter').textContent = '预览失败：' + e.message;
+    $('pvAfter').classList.add('hidden');
+    return;
+  }
+  var type = typeOf(finalFmt(o, it));
+  var q = qualityOf(o);
+  encodeAt(out.canvas, type, type === 'image/png' ? undefined : q, o.bgColor)
+    .catch(function(){ return encodeAt(out.canvas, 'image/png', undefined, null); })
+    .then(function(blob){
+      releaseCanvas(out.canvas);
+      if(token !== renderSeq) return;
+      var prev = previewCache[it.id];
+      if(prev && prev.url) URL.revokeObjectURL(prev.url);
+      if(prev) previewBytes -= (prev.blob ? prev.blob.size : 0);
+      var url = URL.createObjectURL(blob);
+      previewCache[it.id] = { blob: blob, url: url };
+      previewBytes += blob.size;
+      trimPreviewCache();
+      $('pvphAfter').classList.add('hidden');
+      $('pvAfter').classList.remove('hidden');
+      $('pvAfter').src = url;
+      var info = [];
+      // ★ 所有数字都用「真实导出分辨率」口径（按原图算），绝不用预览画布的像素数。
+      //   预览管线走的是缩小后的画布，它的 w/h 在小图上会跟导出差几个像素
+      //   （3376×1440 那次差出一个数量级：427 vs 1440），所以另算一份权威值。
+      var fin = finalExportSize(it, o);
+      info.push('原图 <b>' + it.w + ' × ' + it.h + '</b>');
+      info.push('最终输出 <b>' + fin.w + ' × ' + fin.h + '</b>');
+      info.push('（预览画面按比例缩小显示）');
+      info.push('尺寸变化：' + it.w + ' × ' + it.h + ' → <b>' + fin.w + ' × ' + fin.h + '</b>');
+      info.push('这张预览约 ' + fmtSize(blob.size) + '（缩小后，不是导出体积）');
+      info.push('格式 ' + labelOfFmt(finalFmt(o, it)) + ' · 画质 ' + Math.round(q * 100));
+      if(!hasTransform(o)) info.push('现在所有步骤都没启用，输出＝原图');
+      $('pvinfo').innerHTML = info.join(' ｜ ');
+    });
+}
+function pvLayout(){
+  var wrap = $('pvwrap');
+  wrap.classList.toggle('two', pvTab === 'both');
+  $('pvcolBefore').classList.toggle('hidden', pvTab === 'after');
+  $('pvcolAfter').classList.toggle('hidden', pvTab === 'before');
+}
+function refreshAll(){ updateCount(); renderPreview(); }
+
+/* =====================================================================
+   裁剪：可拖拽的伸缩框
+   · 框用归一化坐标（0~1）存，所以预览画布与导出原图上算出的相对位置完全一致
+   · 拖框内 = 移动；拖 8 个手柄 = 缩放；比例锁在选定预设上；框永远不会跑出画面
+   · 触屏走 pointer 事件 + touch-action:none
+   ===================================================================== */
+var cropSt = { box:null, dw:0, dh:0, pointerId:-1, mode:'', handle:'', sx:0, sy:0, start:null, hasItem:false, pendingSnap:false };
+var cropCanvasBox = { W:0, H:0, scale:1 };
+
+function cropActive(){
+  return segVal('cropMode') !== 'edge';
+}
+/* 目标比例（宽/高）；'orig' 返回 0 表示「不锁，随便拉」 */
+function cropTargetRatio(){
+  var r = segVal('cropRatio') || 'orig';
+  if(r === 'orig') return 0;
+  if(r === 'custom'){
+    var a = Math.max(1, parseInt10($('cropCw').value, 4));
+    var b = Math.max(1, parseInt10($('cropCh').value, 5));
+    return a / b;
+  }
+  var parts = r.split(':');
+  return (parseFloat(parts[0]) || 1) / (parseFloat(parts[1]) || 1);
+}
+/* keepRatio=true  → 按固定比例**锁住当前尺寸**（拖拽时用，不能弹回最大值）
+   keepRatio=false → 只做边界夹紧（'原图比例'模式 / 自由拉伸）
+   ⚠️ 这里**绝对不能**把结果重建成一个只有 {x,y,w,h} 的字面量 ——
+      那样会把 lockBoxToRatio / fitBoxToRatio 算出来的 frac 悄悄丢掉，
+      于是 cropRect 走"按当前图估一个"的退化分支，四张里三张碰巧对、
+      只有 600×1000 露馅（真机上就是这么漏掉的）。改用 withBoxSize 包装，原样保留所有字段。 */
+function setCropBox(box, keepRatio){
+  var W = cropCanvasBox.W, H = cropCanvasBox.H;
+  if(!(W > 0 && H > 0)){
+    // ⚠️ 画布还没就绪（还没渲染预览）时的早退。
+    //    曾经这里直接 `cropSt.box = box` 就返回 —— 如果传进来的是个没带 frac 的框，
+    //    这个"缺 frac 的框"就被存下来了，之后 cropBoxSnapshot 会抛错
+    //    （真机 2026-10 偶发过一次：上传 → 开裁剪 → 点 1:1，比例切换跑在预览画布就绪之前）。
+    //    现在：原样保留 frac 等元信息；若当前是固定比例却拿不到 frac，
+    //    就**先不覆盖权威框**，等 renderCropEditor 里画布就绪后再补算一次
+    //    （cropSt.pendingSnap = true）。
+    var r0 = cropTargetRatio();
+    var keep = carryBoxMeta(box, { x: box.x, y: box.y, w: box.w, h: box.h });
+    if(r0 > 0 && !(keep.frac > 0)){
+      // 固定比例却拿不到 frac：**什么都不存**，只记下"画布就绪后要补贴合"。
+      // 存下去就等于把一个必然算错的框当成了权威值，之后每个 readOpts 都会抛错。
+      cropSt.pendingSnap = true;
+      if(cropSt.box && cropSt.box.frac > 0) return;   // 保留原来那个好框
+      cropSt.box = null;                              // 原来也没有 → 就保持"还没有框"
+      return;
+    }
+    cropSt.box = keep;
+    cropSt.pendingSnap = false;
+    return;
+  }
+  var r = cropTargetRatio();
+  var b = (keepRatio && r > 0) ? lockBoxToRatio(box, r, W, H) : fitBoxToRatio(box, 0, W, H);
+  b = withBoxSize(b, clampNum(b.w, 0.02, 1), clampNum(b.h, 0.02, 1));
+  // 兜一层：无论上面怎么取整，frac 都从传进来的框抄过去（它是"跟图片比例相关"的量，
+  // 只有贴合/锁定那一步才知道正确值，不能在这里被重算或丢掉）
+  b.frac = (box && box.frac > 0) ? box.frac : b.frac;
+  b.refW = W; b.refH = H;              // 这个框是在当前预览画布上归一化的
+  cropSt.box = b;
+  cropSt.srcW = W; cropSt.srcH = H;
+  drawCropOverlay();
+  updateCropInfo();
+}
+/* 比例切换 / 自定义比例改动 / 重置：以当前中心为基准，按比例取最大一块 */
+function snapCropBoxMax(){
+  if(!cropSt.box || !cropCanvasBox.W) return;
+  var r = cropTargetRatio();
+  setCropBox(cropSt.box, r > 0);
+}
+/* 没有框时按「按比例取最大一块、居中」造一个。
+   固定比例 → 走 fitBoxToRatio（自带 frac=1）；原图比例 → 整张图，不锁比例所以不需要 frac。 */
+function defaultCropBox(W, H){
+  var r = cropTargetRatio();
+  var b = { x: 0, y: 0, w: 1, h: 1 };
+  if(r > 0) b = fitBoxToRatio(b, r, W, H);
+  return b;
+}
+/* 交给引擎 / 导出的框快照。
+   ⚠️ 选了固定比例时 frac 是**必须**的：cropRect 靠它把框按每张图各自换算。
+   缺了它就会静默退化成「按当前图估一个」—— 一批图里大部分碰巧对、个别露馅，
+   极难发现（真机上就是这么漏掉的）。所以这里**不再静默降级**：
+   比例模式下缺 frac 说明有写入路径漏写了，直接抛错让问题当场暴露。 */
+function cropBoxSnapshot(){
+  if(!cropActive()) return null;
+  var b = cropSt.box;
+  if(!b) return null;
+  // 没选中图片时框还是个空壳（还没渲染预览），这时不该进快照、更不该报错
+  if(!cropSt.hasItem) return null;
+  if(cropTargetRatio() > 0 && !(b.frac > 0)){
+    /* 比例模式下 frac 缺失：**按当前画布补算并写回**，而不是抛错。
+       依据：编辑器的框永远是在"当前这张图的画布"上贴合出来的（切图 / 切比例时 renderCropEditor 会重新贴合），
+             所以此刻用 box.w 相对当前画布推出来的 frac 就是它该有的值 —— 这是"补算"，不是"拍脑袋估"。
+       ⚠️ 历史：这里原来 throw。结果「选好 1:1 → 清空全部 → 再选图」这条**真实用户路径**会让
+          syncVisibility 抛错、界面当场中断更新（2026-10-14 我的真机验收抓到 2 条 pageErrors）。
+          补算后立刻写回 cropSt.box，导出那条路也能拿到正确的 frac。 */
+    var mm = maxRatioSize(cropTargetRatio(), cropCanvasBox.W, cropCanvasBox.H);
+    if(mm && mm.w > 0 && mm.h > 0){
+      b.frac = Math.min(1, Math.max(1 / Math.max(1, mm.w), (b.w * cropCanvasBox.W) / mm.w));
+      b.pxW = Math.max(1, Math.round(b.w * cropCanvasBox.W));
+      if(!(b.refW > 0)){ b.refW = cropCanvasBox.W; b.refH = cropCanvasBox.H; }
+    } else {
+      return null;   // 连画布信息都没有：宁可不进快照（等价于"还没准备好"），也不要抛错打断界面
+    }
+  }
+  var snap = { x: b.x, y: b.y, w: b.w, h: b.h };
+  if(b.frac > 0) snap.frac = b.frac;   // 「框占同比例最大块多少」，换图/批量时按它等比还原尺寸
+  // 尺寸的权威值（像素）+ 它是"在哪块画布上归一化的"：换图时按这两项还原，
+  // 才能保证大原图上 1 像素的精度不被归一化的 0.02 下限吃掉。
+  if(b.pxW > 0) snap.pxW = b.pxW;
+  if(cropCanvasBox.W > 0){ snap.refW = cropCanvasBox.W; snap.refH = cropCanvasBox.H; }
+  return snap;
+}
+function drawCropOverlay(){
+  var cbox = $('cropcbox'), cv = $('cropcv');
+  var b = cropSt.box;
+  if(!cropSt.hasItem || !b || !cv.width){
+    cbox.classList.add('dis');
+    $('cropph').classList.remove('hidden');
+    $('cropedit').classList.add('nocv');     // 没有画布 → 占位提示参与布局，容器别塌成一条缝
+    return;
+  }
+  $('cropph').classList.add('hidden');
+  $('cropedit').classList.remove('nocv');
+  var dispW = cv.clientWidth || cv.width, dispH = cv.clientHeight || cv.height;
+  var sx = cropCanvasBox.W ? dispW / cropCanvasBox.W : 1;
+  var sy = cropCanvasBox.H ? dispH / cropCanvasBox.H : 1;
+  cbox.classList.remove('dis');
+  // ⚠️ .cropedit 有 padding（留给手柄），canvas 又是 margin:0 auto 居中的，
+  //    所以框的坐标要加上"画布相对编辑器"的偏移，否则框会整体偏左/偏上。
+  //    offsetLeft/offsetTop 是相对 offsetParent 的；正常情况下 offsetParent 就是 .cropedit，
+  //    万一不是（将来改了结构），退回最近定位祖先的坐标差，仍能对上。
+  var offL = cv.offsetLeft, offT = cv.offsetTop;
+  var host = $('cropedit');
+  if(host && cv.offsetParent !== host && cv.getBoundingClientRect && host.getBoundingClientRect){
+    var hrc = host.getBoundingClientRect(), crc = cv.getBoundingClientRect();
+    offL = crc.left - hrc.left - (host.clientLeft || 0);
+    offT = crc.top - hrc.top - (host.clientTop || 0);
+  }
+  cbox.style.left = (offL + b.x * cropCanvasBox.W * sx) + 'px';
+  cbox.style.top = (offT + b.y * cropCanvasBox.H * sy) + 'px';
+  cbox.style.width = Math.max(8, b.w * cropCanvasBox.W * sx) + 'px';
+  cbox.style.height = Math.max(8, b.h * cropCanvasBox.H * sy) + 'px';
+}
+/* 把预览用的小画布画进裁剪编辑器（图片缩到编辑区里，最大边 ≤ PREVIEW_SIDE） */
+function renderCropEditor(){
+  var cv = $('cropcv');
+  if(!cv) return;
+  var it = selItem();
+  cropSt.hasItem = !!it;
+  if(!it || !pvSrc){
+    cropCanvasBox = { W:0, H:0, scale:1 };
+    cv.width = 1; cv.height = 1;
+    cv.style.width = ''; cv.style.height = '';
+    drawCropOverlay();
+    return;
+  }
+  var W = pvSrc.width, H = pvSrc.height;
+  // clientWidth **含 padding**，所以要自己减掉左右内边距（2×8px）+ 1px 边框，
+  // 再留 2px 余量；最后让画布居中后左右各还有富余 ——
+  // 这样框贴到画布边缘时，向外伸 7px 的手柄仍完整落在编辑器内（不被 overflow:hidden 裁掉）。
+  var host = $('cropedit');
+  var inner = (host && host.clientWidth) ? host.clientWidth : 360;
+  var cssW = Math.max(120, Math.min(760, inner - 16 - 2 - 2));
+  var cssH = Math.min(Math.round(window.innerHeight * 0.5), Math.round(cssW * H / W));
+  if(cssH < 90){ cssH = 90; }
+  // ⚠️ 画布尺寸变了（换了选中的图，或同图不同缩放）时，归一化框按**新画面的像素**重算：
+  //    归一化宽高是"跟图片比例相关"的量，直接沿用会让框在 UI 上的实际像素尺寸跳掉
+  //    （于是界面显示的数字和框看起来对不上）。用 pxW（像素权威值）还原就不漂。
+  var picChanged = (cropSt.srcW > 0) && (cropSt.srcW !== W || cropSt.srcH !== H);
+  var oldSrcW = cropSt.srcW, oldSrcH = cropSt.srcH;
+  cropSt.srcW = W; cropSt.srcH = H;
+  cropCanvasBox = { W: W, H: H, scale: 1 };
+  cv.width = W; cv.height = H;
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  var ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(pvSrc, 0, 0, W, H);
+  // 比例变了（或首次）→ 以当前中心重新贴合。
+  // ⚠️ 这里要区分三种情况，混在一起就会出问题（真机 2026-10 踩过两轮）：
+  //    ① 首次 / 换比例 / 换图  → 按该比例**取最大一块**（用户期望"换个比例就给我最大的"）；
+  //    ② 画布刚就绪要补做那次"比例切换时画布还没就绪"的贴合 → 也是取最大；
+  //    ③ 其它（同一张图、同一比例的重渲染，例如窗口 resize）→ **尺寸原样保留**，
+  //       绝不能顶到最大，否则用户拖小的框会被放大回去。
+  //    frac 就是"占同比例最大块的多少"，所以 ①② 之后 frac=1，③ 之后 frac 不变。
+  var r = cropTargetRatio();
+  var prevRatio = cropSt.lastRatio;
+  var ratioChanged = (prevRatio !== undefined) && (prevRatio !== r);
+  cropSt.lastRatio = r;
+  // 「记住设置」恢复过来的裁剪框：走 setCropBox 那条路按**当前这张图**重新贴合，
+  // 绝不把存下来的裸框直接塞进 cropSt.box（那会缺 frac / 尺寸对不上）。
+  if(pendingCropBox && cropActive()) restoreCropBoxIfAny(W, H);
+  if(!cropSt.box){
+    cropSt.box = defaultCropBox(W, H);
+  } else if(r > 0 && (ratioChanged || picChanged || cropSt.pendingSnap)){
+    var snapBox = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.box = fitBoxToRatio(snapBox, r, W, H);
+  } else if(r > 0){
+    // 同图同比例：保住 frac 描述的相对大小（不顶到最大）
+    var sameBox = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    var rf = refitBoxToRatio(sameBox, r, W, H);
+    if(!(rf.frac > 0)) rf.frac = 1 / Math.max(1, rf.w * W);
+    cropSt.box = rf;
+  } else {
+    // 原图比例：只夹进画面
+    var freeBox = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.box = fitBoxToRatio(freeBox, 0, W, H);
+  }
+  cropSt.pendingSnap = false;
+  if(cropSt.box){ cropSt.box.refW = W; cropSt.box.refH = H; }
+  drawCropOverlay();
+  updateCropInfo();
+}
+function updateCropInfo(){
+  var el = $('cropInfo');
+  if(!el) return;
+  var it = selItem();
+  if(!it || !cropSt.box){ el.textContent = '拖动框内 = 移动；拖 8 个小方块 = 缩放。比例锁在选定值上，框不会跑出画面。'; return; }
+  var b = cropSt.box;
+  // ★ 单一事实源：界面显示的数字直接问 cropRect 要 —— 跟导出 / 批处理走**同一个函数**，
+  //   而且一律是**原图口径**（it.w × it.h），不是预览画布尺寸。
+  //   （以前这里是自己拿归一化宽高乘一乘，于是出现"界面说 600×600、导出却 450×450"）
+  //   这里只取裁剪参数，不走整个 readOpts()：拖动时每个 pointermove 都会调它，
+  //   没必要把全部参数都读一遍（也避免依赖其它块的 DOM 状态）。
+  var r = cropRect(Math.max(1, Math.round(it.w)), Math.max(1, Math.round(it.h)), {
+    mode: segVal('cropMode') || 'box',
+    ratio: segVal('cropRatio') || 'orig',
+    ratioW: +$('cropCw').value,
+    ratioH: +$('cropCh').value,
+    box: b,
+    edgePercent: +$('cropEdge').value,
+    edgePx: +$('cropEdgeNum').value
+  });
+  var pct = Math.round(r.w * r.h / (it.w * it.h) * 100);
+  el.innerHTML = '裁剪后导出 <b>' + r.w + ' × ' + r.h + '</b> 像素（占原图 ' + pct + '%）'
+    + ' ｜ 拖动框内 = 移动，拖 8 个小方块 = 缩放';
+}
+function cropPointerPos(e){
+  var cv = $('cropcv');
+  var rect = cv.getBoundingClientRect();
+  var scaleX = rect.width ? (cropCanvasBox.W / rect.width) : 1;
+  var scaleY = rect.height ? (cropCanvasBox.H / rect.height) : 1;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+function cropHitTest(p){
+  var b = cropSt.box;
+  if(!b) return '';
+  var W = cropCanvasBox.W, H = cropCanvasBox.H;
+  var x0 = b.x * W, y0 = b.y * H, x1 = x0 + b.w * W, y1 = y0 + b.h * H;
+  var tol = Math.max(10, Math.min(24, Math.min(W, H) * 0.04));
+  var nearL = p.x <= x0 + tol, nearR = p.x >= x1 - tol;
+  var nearT = p.y <= y0 + tol, nearB = p.y >= y1 - tol;
+  var inX = p.x >= x0 - tol && p.x <= x1 + tol, inY = p.y >= y0 - tol && p.y <= y1 + tol;
+  if(nearT && nearL) return 'nw';
+  if(nearT && nearR) return 'ne';
+  if(nearB && nearL) return 'sw';
+  if(nearB && nearR) return 'se';
+  if(nearT && inX) return 'n';
+  if(nearB && inX) return 's';
+  if(nearL && inY) return 'w';
+  if(nearR && inY) return 'e';
+  if(p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1) return 'move';
+  return '';
+}
+/* 拖拽期间的框状态：`start` 是 pointerdown 时的快照（必须带 frac）。
+   为什么不能直接把 moveBox / resizeBox 的结果当新框：
+   它们是"只有 x/y/w/h"的纯函数，**既会丢 frac，也不会按比例修另一边**——
+   而「占同比例最大块的多少」这个量（frac）正是换图/批量时唯一能跨图还原尺寸的尺子。
+   所以这里在**归一化空间**里做两步：
+     ① 用纯函数按位移得到目标尺寸（锁比例时它已经保持 w:h 不变）；
+     ② 用 withBoxSize 把框钉回"严格符合比例"的尺寸与位置，并把 frac 重新算出来。
+   frac 从「框宽 / 同比例最大块的归一化宽」得出，所以选一张图拖小，别的图也按同比例变小。 */
+function dragCropBox(start, mode, handle, dx, dy, ratio, W, H){
+  // 移动：只变位置、尺寸不变，frac 必须原样跟着走（moveBox 是纯 x/y/w/h 函数，会丢它）
+  if(mode === 'move') return carryBoxMeta(start, moveBox(start, dx, dy));
+  var lock = (ratio > 0 && W > 0 && H > 0) ? (ratio * H / W) : 0;
+  var moved = resizeBox(start, handle, dx, dy, lock);
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    return fitBoxToRatio(moved, 0, W, H);
+  }
+  var max = maxRatioSize(ratio, W, H);
+  var cls = String(handle || 'se');
+  var east = cls.indexOf('e') >= 0, west = cls.indexOf('w') >= 0;
+  var north = cls.charAt(0) === 'n', south = cls.charAt(0) === 's';
+  var s = 1;
+  if(east) s = moved.w / Math.max(1e-6, start.w);
+  else if(west){
+    var right = start.x + start.w;
+    s = (right - moved.x) / Math.max(1e-6, start.w);
+  } else if(north){
+    var bottom = start.y + start.h;
+    s = (bottom - moved.y) / Math.max(1e-6, start.h);
+  } else if(south) s = moved.h / Math.max(1e-6, start.h);
+  var max = maxRatioSize(ratio, W, H);
+  // 尺寸直接用「像素」表达并按 ratio 反推高度 —— 绝不出现 w/h 各自独立取整导致的比例偏差。
+  // ⚠️ 两个坑（都踩过）：
+  //   ① 别用"最小归一化边长 0.02"当地板：在 800×600 上会变成 {0.02,0.02}，不是 1:1；
+  //   ② 宽度和高度不能各自独立 clamp：一顶到边界比例就崩（600×1000 上出 12×20）。
+  // 地板走 minRatioWidth：它同时保证「w ≥ 2% 宽」和「h = w/ratio 向上取整后仍 ≥ 2% 高」，
+  // 这样拖到最小也不会被下游的归一化下限把比例夹歪。基准用 refW/refH（框当初归一化用的画布）。
+  var refW = (start.refW > 0) ? start.refW : W;
+  var refH = (start.refH > 0) ? start.refH : H;
+  var needW = Math.max(W * 0.02, refW * 0.02);
+  var needH = Math.max(H * 0.02, refH * 0.02);
+  var minW = Math.min(max.w, Math.max(1, minRatioWidth(ratio, needW, needH)));
+  var desireW = (east || west) ? (start.w * W * s) : ((start.h * H * s) * ratio);
+  var fitW = Math.round(clampNum(desireW, minW, max.w));
+  var fitH = Math.round(fitW / ratio);
+  if(fitH > max.h){
+    fitH = Math.max(1, Math.round(max.h));
+    fitW = Math.max(1, Math.round(fitH * ratio));
+  }
+  if(fitH < 1 || fitW < 1){ fitW = minW; fitH = Math.max(1, Math.round(fitW / ratio)); }
+  var fitted = withBoxSize(start, fitW / W, fitH / H);
+  // 尺寸的权威值用**像素**存（pxW）：大图上归一化的 0.02 比 1 像素还粗，
+  // 只靠归一化宽高传递会在最小尺寸处把比例夹歪。
+  fitted.pxW = fitW;
+  fitted.frac = clampNum(fitW / max.w, 1 / Math.max(1, max.w), 1);
+  if(start.refW > 0){ fitted.refW = start.refW; fitted.refH = start.refH; }
+  // 位置：拖哪条边就让哪条边跟着鼠标走（角手柄两条边都跟）
+  if(east) fitted.x = start.x;
+  else if(west) fitted.x = start.x + start.w - fitted.w;
+  if(north) fitted.y = start.y + start.h - fitted.h;
+  else if(south) fitted.y = start.y;
+  fitted.x = Math.max(0, Math.min(1 - fitted.w, fitted.x));
+  fitted.y = Math.max(0, Math.min(1 - fitted.h, fitted.y));
+  return fitted;
+}
+function bindCropEditor(){
+  var cv = $('cropcv'), cbox = $('cropcbox');
+  function down(e){
+    if(busy || !cropActive() || !cropSt.hasItem || !cropSt.box) return;
+    var hp = '';
+    var hEl = e.target && e.target.closest ? e.target.closest('i[data-h]') : null;
+    if(hEl) hp = hEl.getAttribute('data-h');
+    else hp = cropHitTest(cropPointerPos(e));
+    if(!hp) return;
+    e.preventDefault();
+    cropSt.pointerId = e.pointerId;
+    cropSt.mode = (hp === 'move') ? 'move' : 'resize';
+    cropSt.handle = hp;
+    // ★ 起点快照必须带上 frac（曾经这里只搬 {x,y,w,h}，拖完 frac 就没了 → 预览抛错、卡住不刷新）
+    cropSt.start = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.start.refW = cropCanvasBox.W;   // 记住"这个框是在多大的画布上归一化的"（换图时算地板要用）
+    cropSt.start.refH = cropCanvasBox.H;
+    cropSt.sx = e.clientX; cropSt.sy = e.clientY;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+    if(cbox && cbox.setPointerCapture){ try{ cbox.setPointerCapture(e.pointerId); }catch(err){} }
+  }
+  function move(e){
+    if(cropSt.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    var rect = cv.getBoundingClientRect();
+    if(!rect.width || !rect.height) return;
+    var dx = (e.clientX - cropSt.sx) / rect.width;    // 归一化位移
+    var dy = (e.clientY - cropSt.sy) / rect.height;
+    var next = dragCropBox(cropSt.start, cropSt.mode, cropSt.handle, dx, dy, cropTargetRatio(), cropCanvasBox.W, cropCanvasBox.H);
+    // 拖拽结果已经是"定好尺寸 + 定好位置"的完整框，**直接赋值**。
+    // ⚠️ 别再套一层 fitBoxToRatio / setCropBox：那两个会重新夹归一化宽高，
+    //    而 pxW 是"夹之前"的像素值 —— 一旦 w 被夹小，pxW 就跟实际尺寸不符
+    //    （表现：换图/预览算出来的尺寸不等于屏幕上看到的框）。
+    cropSt.box = next;
+    drawCropOverlay();
+    updateCropInfo();
+    scheduleRender();
+  }
+  function up(e){
+    if(cropSt.pointerId !== e.pointerId) return;
+    cropSt.pointerId = -1; cropSt.mode = ''; cropSt.handle = '';
+    try{ cv.releasePointerCapture(e.pointerId); }catch(err){}
+    // 松手时补一次摘要刷新：其它控件都会调 syncVisibility()，只有拖拽这条链路漏了，
+    // 结果标题栏那句「1:1 · 占 75% · 600×600」在拖完框之后还停在旧数字上（真机看出来的）。
+    syncVisibility();
+    scheduleRender();
+  }
+  cv.addEventListener('pointerdown', down);
+  cv.addEventListener('pointermove', move);
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+  cbox.addEventListener('pointerdown', down);
+  cbox.addEventListener('pointermove', move);
+  cbox.addEventListener('pointerup', up);
+  cbox.addEventListener('pointercancel', up);
+  // 触摸端：阻止页面跟着滚
+  ['touchstart', 'touchmove'].forEach(function(ev){
+    cv.addEventListener(ev, function(e){
+      if(cropSt.pointerId !== -1 && e.cancelable) e.preventDefault();
+    }, { passive:false });
+  });
+  window.addEventListener('resize', function(){ renderCropEditor(); });
+}
+
+/* =====================================================================
+   折叠：每块标题栏右侧的 ▸ 展开 / 收起。**默认 5 块全收起**（用户要求统一全折叠，
+   想看哪块展开哪块）。折叠**只影响显示**，执行只认「启用」开关。
+   ===================================================================== */
+var BLOCKS = ['crop', 'rot', 'size', 'wm', 'out'];
+var folded = { crop:true, rot:true, size:true, wm:true, out:true };
+/* =====================================================================
+   记住上次设置（localStorage）
+   · 只记**参数**，不记图片队列（那太大，而且图片本身也不可能存）
+   · localStorage 在隐私模式 / 某些 file:// 环境下会**直接抛异常**，所以全部 try/catch
+   · 恢复裁剪框必须走 setCropBox / 重新贴合那条路，不能把裸框塞进 cropSt.box
+     （那会重现"缺 frac"那类问题）；存的时候连 frac/pxW/refW/refH 一起存
+   ===================================================================== */
+var SETTINGS_KEY = 'img-batch.settings.v1';
+function lsGet(){
+  try{ return window.localStorage; }catch(e){ return null; }
+}
+function loadStoredSettings(){
+  var ls = lsGet();
+  if(!ls) return null;
+  try{
+    var raw = ls.getItem(SETTINGS_KEY);
+    if(!raw) return null;
+    var obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj : null;
+  }catch(e){ return null; }
+}
+function forgetSettings(){
+  var ls = lsGet();
+  if(!ls) return;
+  try{ ls.removeItem(SETTINGS_KEY); }catch(e){}
+}
+/* 存快照：只存 FACTORY 表里登记过的控件 + 分段 + 折叠 + 裁剪框元信息 */
+function settingsSnapshot(){
+  var st = { ctrls:{}, segs:{}, fold: foldSnapshot(), cropBox: null };
+  Object.keys(FACTORY).forEach(function(id){
+    var el = $(id);
+    if(!el) return;
+    st.ctrls[id] = (FACTORY[id].type === 'checkbox') ? !!el.checked : String(el.value);
+  });
+  Object.keys(FACTORY_SEG).forEach(function(id){
+    var v = segVal(id);
+    if(v !== undefined && v !== null) st.segs[id] = v;
+  });
+  try{
+    // ★ 连 frac/pxW/refW/refH 一起存 —— 恢复后要能按"当前这张图"重新贴合
+    st.cropBox = cropActive() ? cropBoxSnapshot() : null;
+  }catch(e){ st.cropBox = null; }
+  return st;
+}
+var saveSettingsTimer = null;
+function saveSettingsSoon(){
+  if(saveSettingsTimer) clearTimeout(saveSettingsTimer);
+  saveSettingsTimer = setTimeout(function(){
+    saveSettingsTimer = null;
+    var ls = lsGet();
+    if(!ls) return;
+    try{ ls.setItem(SETTINGS_KEY, JSON.stringify(settingsSnapshot())); }catch(e){}
+  }, 400);   // debounce：拖动滑块时别每个事件都写
+}
+/* 页面加载时恢复。返回 true 表示确实恢复了一份非出厂设置 */
+function restoreSettings(){
+  var st = loadStoredSettings();
+  if(!st) return false;
+  var any = false;
+  if(st.ctrls){
+    Object.keys(st.ctrls).forEach(function(id){
+      var d = FACTORY[id];
+      if(!d || !$(id)) return;
+      if(d.type === 'checkbox') $(id).checked = !!st.ctrls[id];
+      else $(id).value = st.ctrls[id];
+      any = true;
+    });
+  }
+  if(st.segs){
+    Object.keys(st.segs).forEach(function(id){
+      if(FACTORY_SEG[id] === undefined) return;
+      var box = $(id);
+      if(!box) return;
+      var kids = box.querySelectorAll('button');
+      for(var i = 0; i < kids.length; i++) kids[i].classList.toggle('on', kids[i].getAttribute('data-v') === st.segs[id]);
+      any = true;
+    });
+  }
+  if(st.fold && typeof st.fold === 'object'){
+    ['crop','rot','size','wm','out'].forEach(function(k){
+      if(typeof st.fold[k] === 'boolean') folded[k] = st.fold[k];
+    });
+  }
+  // 裁剪框：存下来的裸框先放着，等 renderCropEditor 按**当前这张图**重新贴合
+  pendingCropBox = st.cropBox || null;
+  // range / color 的数值标签跟上
+  Object.keys(FACTORY).forEach(function(id){
+    var el = $(id);
+    if(!el || !el.getAttribute) return;
+    var out = $(id + '-v');
+    if(out && (el.type === 'range' || el.type === 'color')){
+      out.textContent = (el.type === 'color') ? colorName(el.value) : (el.value + (el.getAttribute('data-unit') || ''));
+    }
+  });
+  return any;
+}
+/* 从"存下来的框"恢复：必须走 setCropBox 那条路（重新贴合），不能直接塞进 cropSt.box */
+var pendingCropBox = null;
+function restoreCropBoxIfAny(W, H){
+  if(!pendingCropBox) return false;
+  var b = pendingCropBox;
+  pendingCropBox = null;
+  // 存的时候带了 frac/pxW/refW/refH，setCropBox → lockBoxToRatio/fitBoxToRatio 会按新图重算
+  var keep = carryBoxMeta(b, { x: b.x, y: b.y, w: b.w, h: b.h });
+  if(b.refW > 0){ keep.refW = b.refW; keep.refH = b.refH; }
+  setCropBox(keep, true);
+  return true;
+}
+/* =====================================================================
+   出厂默认值 + 「↺ 默认」/「全部恢复默认」
+   把默认值集中成一张表，重置与"记住设置"都从这里取 ——
+   手写第二份默认值必然漂移（模板里改了 value，重置还是老值）。
+   ===================================================================== */
+var FACTORY = {
+  // 「启用」开关：全关（重置后摘要会回到「未启用」）
+  cropOn: { type:'checkbox', v:false },
+  rotOn:  { type:'checkbox', v:false },
+  sizeOn: { type:'checkbox', v:false },
+  wmOn:   { type:'checkbox', v:false },
+  outOn:  { type:'checkbox', v:false },
+  // ② 裁剪
+  cropCw: { type:'number', v:4 }, cropCh: { type:'number', v:5 },
+  cropEdgePx: { type:'range', v:2 }, cropEdgeNum: { type:'number', v:0 },
+  // ③ 旋转 / 翻转
+  rotAngle: { type:'range', v:0 }, rotBg: { type:'color', v:'#ffffff' },
+  flipH: { type:'checkbox', v:false }, flipV: { type:'checkbox', v:false },
+  // ④ 改尺寸
+  sizeLong: { type:'number', v:1920 }, sizeShort: { type:'number', v:1080 },
+  sizeW: { type:'number', v:1080 }, sizeH: { type:'number', v:1080 },
+  sizePct: { type:'number', v:50 }, sizeFitW: { type:'number', v:1080 }, sizeFitH: { type:'number', v:1080 },
+  sizeNoUp: { type:'checkbox', v:true },
+  // ⑤ 水印
+  wmText: { type:'text', v:'' }, wmSize: { type:'range', v:5 }, wmColor: { type:'color', v:'#ffffff' },
+  wmScale: { type:'range', v:18 }, wmAlpha: { type:'range', v:45 }, wmRot: { type:'range', v:0 },
+  wmTile: { type:'checkbox', v:false }, wmMargin: { type:'range', v:3 },
+  // ⑥ 输出格式与质量
+  outQ: { type:'range', v:85 }, metaStrip: { type:'checkbox', v:false },
+  targetOn: { type:'checkbox', v:false }, targetVal: { type:'number', v:200 }, targetUnit: { type:'select', v:'KB' },
+  bgOn: { type:'checkbox', v:false }, bgColor: { type:'color', v:'#ffffff' },
+  // 输出
+  suffix: { type:'text', v:'_out' }
+};
+/* 分段控件 / 九宫格的默认值：分段是"选中哪个"，不是 value */
+var FACTORY_SEG = {
+  cropMode:'box', cropRatio:'orig', rot90:'0', sizeMode:'long', sizeQuality:'high',
+  wmType:'text', pad:'br', outFmt:'keep'
+};
+/* 每个块包含哪些控件 —— 「↺ 默认」按这张表分清"这一块"的边界 */
+var BLOCK_CTRLS = {
+  crop: ['cropOn','cropMode','cropRatio','cropCw','cropCh','cropEdgePx','cropEdgeNum'],
+  rot:  ['rotOn','rot90','rotAngle','rotBg','flipH','flipV'],
+  size: ['sizeOn','sizeMode','sizeLong','sizeShort','sizeW','sizeH','sizePct','sizeFitW','sizeFitH','sizeQuality','sizeNoUp'],
+  wm:   ['wmOn','wmType','wmText','wmSize','wmColor','wmScale','wmAlpha','wmRot','wmTile','pad','wmMargin'],
+  out:  ['outOn','outFmt','outQ','metaStrip','targetOn','targetVal','targetUnit','bgOn','bgColor']
+};
+function applyFactoryCtrl(id){
+  var d = FACTORY[id];
+  if(d){
+    var el = $(id);
+    if(!el) return;
+    if(d.type === 'checkbox') el.checked = !!d.v;
+    else el.value = d.v;
+    // 让 range / color 的数值标签跟上
+    var out = $(id + '-v');
+    if(out && el.getAttribute && (el.type === 'range' || el.type === 'color')){
+      out.textContent = (el.type === 'color') ? colorName(el.value) : (el.value + (el.getAttribute('data-unit') || ''));
+    }
+    return;
+  }
+  if(FACTORY_SEG[id] !== undefined){
+    var box = $(id);
+    if(!box) return;
+    var kids = box.querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++){
+      kids[i].classList.toggle('on', kids[i].getAttribute('data-v') === FACTORY_SEG[id]);
+    }
+  }
+}
+/* 恢复某一个块（含把该块的「启用」关掉） */
+function resetBlock(k){
+  var list = BLOCK_CTRLS[k] || [];
+  for(var i = 0; i < list.length; i++) applyFactoryCtrl(list[i]);
+  if(k === 'crop'){
+    cropSt.box = null; cropSt.pendingSnap = false; cropSt.lastRatio = undefined;
+    cropSt.srcW = 0; cropSt.srcH = 0;
+    if(cropCanvasBox.W > 0) cropSt.box = defaultCropBox(cropCanvasBox.W, cropCanvasBox.H);
+    drawCropOverlay();
+  }
+  syncVisibility();
+  scheduleRender();
+}
+/* 全部恢复默认：5 块 + 后缀 + 折叠状态（**不动图片队列**） */
+function resetAll(){
+  BLOCKS.forEach(function(k){ var l = BLOCK_CTRLS[k] || []; for(var i = 0; i < l.length; i++) applyFactoryCtrl(l[i]); });
+  ['suffix'].forEach(applyFactoryCtrl);
+  cropSt.box = null; cropSt.pendingSnap = false; cropSt.lastRatio = undefined;
+  cropSt.srcW = 0; cropSt.srcH = 0;
+  // 折叠状态回到出厂（5 块全折叠），并收起"无损说明"那条
+  folded.crop = folded.rot = folded.size = folded.wm = folded.out = true;
+  applyFold();
+  applyFmtNoteFold(false);
+  if(cropCanvasBox.W > 0) cropSt.box = defaultCropBox(cropCanvasBox.W, cropCanvasBox.H);
+  if(typeof forgetSettings === 'function') forgetSettings();
+  syncVisibility();
+  renderCropEditor();
+  scheduleRender();
+  updateSummaries();
+}
+var folded = { crop:true, rot:true, size:true, wm:true, out:true };
+function applyFold(){  BLOCKS.forEach(function(k){
+    var card = $('card-' + k);
+    if(!card) return;
+    card.classList.toggle('folded', !!folded[k]);
+    var btn = $('fold-' + k);
+    if(btn){
+      btn.setAttribute('aria-expanded', folded[k] ? 'false' : 'true');
+      btn.title = folded[k] ? '展开' : '收起';
+    }
+  });
+  if(!folded.crop) renderCropEditor();
+}
+function toggleFold(k){
+  folded[k] = !folded[k];
+  applyFold();
+}
+function foldSnapshot(){ return { crop:!!folded.crop, rot:!!folded.rot, size:!!folded.size, wm:!!folded.wm, out:!!folded.out, fmtFootnote:!!fmtNoteOpen }; }
+function restoreFold(f){
+  if(!f) return;
+  BLOCKS.forEach(function(k){ if(typeof f[k] === 'boolean') folded[k] = f[k]; });
+  if(typeof f.fmtFootnote === 'boolean') applyFmtNoteFold(f.fmtFootnote);
+  applyFold();
+}
+/* 「哪些组合是无损的」那段说明的小折叠：跟 5 个块一样，**只管显示**，
+   默认收起（用户反馈太长）。折叠时下面直接就是那三个选项。 */
+var fmtNoteOpen = false;
+function applyFmtNoteFold(open){
+  fmtNoteOpen = !!open;
+  var body = $('fmtFmtBody'), head = $('fmtFmtHead'), arw = $('fmtFmtArw');
+  if(body) body.classList.toggle('hidden', !fmtNoteOpen);
+  if(head) head.setAttribute('aria-expanded', fmtNoteOpen ? 'true' : 'false');
+  if(arw) arw.textContent = fmtNoteOpen ? '▾' : '▸';
+}
+function toggleFmtNoteFold(){ applyFmtNoteFold(!fmtNoteOpen); }
+
+/* 收起态的一行摘要：只讲「这块现在会做什么」，不参与任何计算 */
+function sumCrop(o){
+  if(!o.cropOn) return '';
+  if(o.crop.mode === 'edge'){
+    return '四周各裁 ' + (o.crop.edgePx > 0 ? (o.crop.edgePx + ' 像素') : (o.crop.edgePercent + '%'));
+  }
+  var it = selItem();
+  var ratioName = (segVal('cropRatio') || 'orig').replace(':', ' : ');
+  if(ratioName === 'orig') ratioName = '原图比例';
+  if(!it) return ratioName;
+  // ★ 尺寸和占比都**问 cropRect() 要** —— 跟下面那行「裁剪后导出 …」以及真正导出**同一个函数**。
+  //   ⚠️ 以前这里自己乘 `b.w * it.w`（归一化宽 × 图宽），跟导出差 2 像素：
+  //      3376×1440 上摘要写 1442×1440、信息行与实际导出都是 1440×1440（截图对出来的）。
+  var r = cropRect(it.w, it.h, o.crop);
+  var pct = Math.max(1, Math.round((r.w * r.h) / Math.max(1, it.w * it.h) * 100));
+  return ratioName + ' · 占 ' + pct + '% · ' + r.w + '×' + r.h;
+}
+function sumRot(o){
+  if(!o.rotOn) return '';
+  var bits = [];
+  if(o.rot.rot90) bits.push('转 ' + o.rot.rot90 + '°');
+  if(o.rot.angle) bits.push('再转 ' + o.rot.angle + '°');
+  if(o.rot.flipH) bits.push('左右翻');
+  if(o.rot.flipV) bits.push('上下翻');
+  if(!bits.length) bits.push('不转');
+  if(bits.length > 1 && (o.rot.angle || o.rot.flipH || o.rot.flipV)) bits.push('底色 ' + colorName(o.rot.bg));
+  return bits.join(' · ');
+}
+function sumSize(o){
+  if(!o.sizeOn) return '';
+  var s = o.size;
+  if(s.mode === 'long') return '长边 ' + s.longEdge + (s.noEnlarge ? ' · 不放大' : '');
+  if(s.mode === 'short') return '短边 ' + s.shortEdge + (s.noEnlarge ? ' · 不放大' : '');
+  if(s.mode === 'wh') return s.w + '×' + s.h + (s.noEnlarge ? ' · 不放大' : '');
+  if(s.mode === 'pct') return s.percent + '%' + (s.noEnlarge ? ' · 不放大' : '');
+  if(s.mode === 'fit') return '装在 ' + s.fitW + '×' + s.fitH + ' 框内';
+  return '';
+}
+/* ⑤ 水印的收起态摘要 —— 用**大白话**写，和另外 4 块一个规矩：
+   没启用 → 「未启用」；启用了 → 按当前选择说人话。
+   ⚠️ 历史：第一版写的是「文字水印（还没写） · 九宫格 br · 透明度 45%」，用户看不懂
+   （`br` 是内部缩写）；我一度整条删掉，结果它跟其它块不一致（用户 2026-10-14 提）。
+   所以这一版把九宫格位置**直接换成按钮上的中文**（右下 / 正中 …），其余也用界面用词。 */
+var WM_POS_NAME = { tl:'左上', tc:'上中', tr:'右上', ml:'左中', mc:'正中', mr:'右中', bl:'左下', bc:'下中', br:'右下' };
+function sumWm(o){
+  if(!o.wmOn) return '';
+  var bits = [];
+  if(o.wm.type === 'image'){
+    bits.push('图片水印' + (getWatermarkImage() ? '' : '（还没选图）'));
+  } else {
+    var t = String(o.wm.text || '').replace(/\s/g, '');
+    bits.push('文字水印' + (t ? '「' + String(o.wm.text).slice(0, 8) + '」' : '（还没写字）'));
+  }
+  bits.push(o.wm.tile ? '平铺整张图' : (WM_POS_NAME[o.wm.pos] || '右下'));
+  bits.push('不透明度 ' + Math.round(o.wm.alpha * 100) + '%');
+  if(o.wm.rotate) bits.push('转 ' + o.wm.rotate + '°');
+  return bits.join(' · ');
+}
+function sumOut(o){
+  if(!o.outOn) return '';
+  var f = segVal('outFmt') || 'keep';
+  var name = f === 'keep' ? '保持原格式' : (f === 'jpeg' ? 'JPG' : (f === 'webp' ? 'WebP' : 'PNG'));
+  var bits = [name];
+  if(f !== 'png') bits.push('画质 ' + o.quality);
+  if(o.metaStrip) bits.push('剥元数据');
+  if(o.targetOn && o.targetBytes) bits.push('压到 ' + fmtSize(o.targetBytes) + ' 以内');
+  return bits.join(' · ');
+}
+function updateSummaries(){
+  var o = readOpts();
+  $('sum-crop').innerHTML = o.cropOn ? (sumCrop(o) || '按比例裁剪') : '未启用';
+  $('sum-rot').innerHTML = o.rotOn ? (sumRot(o) || '未启用') : '未启用';
+  $('sum-size').innerHTML = o.sizeOn ? (sumSize(o) || '未启用') : '未启用';
+  $('sum-wm').innerHTML = o.wmOn ? (sumWm(o) || '未启用') : '未启用';   // ⑤ 也跟其它块一致：没启用显示「未启用」
+  $('sum-out').innerHTML = o.outOn ? (sumOut(o) || '未启用') : '未启用';
+}
+
+/* ===================== 按钮状态 / 进度 ===================== */
+function syncButtons(){
+  var n = items.length, ready = n > 0 && !busy;
+  $('clear').disabled = !n || busy;
+  $('file').disabled = busy;
+  $('runAll').disabled = !ready;
+  $('runOne').disabled = !ready || selIndex() < 0;
+  $('prev').disabled = !ready || selIndex() <= 0;
+  $('next').disabled = !ready || selIndex() < 0 || selIndex() >= n - 1;
+  $('cancel').classList.toggle('hidden', !busy);
+  $('wmPick').disabled = busy;
+}
+function setProgress(ratio, text){
+  $('bar').style.width = Math.round(Math.max(0, Math.min(1, ratio)) * 100) + '%';
+  $('pstat').textContent = text;
+}
+function downloadBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){
+    if(a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 5000);
+}
+function uniqueName(name, used){
+  if(!used[name]){ used[name] = true; return name; }
+  var dot = name.lastIndexOf('.');
+  var base = dot > 0 ? name.slice(0, dot) : name;
+  var ext = dot > 0 ? name.slice(dot) : '';
+  var i = 2, cand;
+  do { cand = base + '_' + i + ext; i++; } while(used[cand]);
+  used[cand] = true;
+  return cand;
+}
+function stamp(){
+  var d = new Date();
+  return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '_' + pad2(d.getHours()) + pad2(d.getMinutes());
+}
+
+/* =====================================================================
+   ZIP 打包（store 模式，无压缩）—— 自己实现，不依赖任何第三方库
+   结构：每个文件 = 本地文件头 + 文件名 + 原始数据；最后是中央目录 + EOCD
+   文件名走 UTF-8（通用位标记 0x0800），所以中文文件名也正常
+   已知限制：单条目 > 4GB 或条目数 > 65535 需要 ZIP64，这里不支持（图片工具到不了）
+   ===================================================================== */
+/* ==== ZIP-ENGINE-START ==== */
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for(var n = 0; n < 256; n++){
+    var c = n;
+    for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  var c = 0xFFFFFFFF;
+  for(var i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files){
+  var enc = new TextEncoder();
+  var now = new Date();
+  var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  var parts = [], central = [];
+  var offset = 0;
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var nameBytes = enc.encode(f.name);
+    var crc = crc32(f.data);
+    var size = f.data.length;
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);
+    lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true);
+    lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameBytes.length, true);
+    lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint16(30, 0, true);
+    ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true);
+    ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+    offset += 30 + nameBytes.length + size;
+  }
+  var cdSize = 0;
+  for(var j = 0; j < central.length; j++) cdSize += central[j].length;
+  var eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(4, 0, true);
+  eocd.setUint16(6, 0, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  eocd.setUint16(20, 0, true);
+  var all = parts.concat(central);
+  all.push(new Uint8Array(eocd.buffer));
+  return new Blob(all, { type: 'application/zip' });
+}
+/* ==== ZIP-ENGINE-END ==== */
+
+/* ===================== 批量处理 ===================== */
+function checkReady(single){
+  if(!items.length){ flash('请先在第 1 步选择图片。', 'err'); return null; }
+  var o = readOpts();
+  if(o.wmOn && o.wm.mode === 'sign' && o.wm.type === 'text' && !String(o.wm.text || '').replace(/\s/g, '').length){
+    flash('第 5 步的水印开着，但水印文字是空的。写上字，或者把水印关掉再处理。', 'err');
+    return null;
+  }
+  if(o.wmOn && o.wm.type === 'image' && !wmBitmap){
+    flash('第 5 步选了「图片水印」，但还没选水印图片。', 'err');
+    return null;
+  }
+  if(single && selIndex() < 0){ flash('先在缩略图里点一张要下载的图。', 'err'); return null; }
+  // 一个步骤都没开时，任何处理都会把画面重编码一次（JPG / WebP 会掉一次画质），先提醒
+  if(!hasTransform(o) && !o.metaStrip){
+    flash('提示：现在六个步骤一个都没启用，处理只会把每张图重新存一遍（格式不变，但 JPG / WebP 会再压一次、画质略降）。想真正做点什么，先打开要用的步骤；只想省体积就勾上「剥掉元数据」。', 'warn');
+  }
+  return o;
+}
+function summarise(rows, t0, cancelled){
+  var ok = 0, fail = 0, before = 0, after = 0, notes = [], hitMiss = 0;
+  for(var i = 0; i < rows.length; i++){
+    var r = rows[i];
+    before += r.before;
+    if(r.ok){ ok++; after += r.after; } else fail++;
+    if(r.ok && r.note && /未能达到目标/.test(r.note)) hitMiss++;
+  }
+  var save = before ? ((1 - after / before) * 100) : 0;
+  lastSummary = { ok: ok, fail: fail, before: before, after: after };
+  var html = '<b>' + (cancelled ? '已取消（下面是取消前处理好的）' : '全部完成') + '</b>：共处理 ' + rows.length + ' 张，成功 <b>' + ok + '</b> 张'
+    + (fail ? '，失败 <b>' + fail + '</b> 张' : '')
+    + '。<br>体积：' + fmtSize(before) + ' → <b>' + fmtSize(after) + '</b> '
+    + (after <= before ? ('（省了 ' + save.toFixed(1) + '%）') : ('（大了 ' + Math.abs(save).toFixed(1) + '%，通常是转成 PNG 或者原图本来就很压得狠）'))
+    + '，用时 ' + ((Date.now() - t0) / 1000).toFixed(1) + ' 秒。';
+  if(hitMiss) html += '<br><b class="hint warn" style="display:inline">有 ' + hitMiss + ' 张压不到你设的目标体积</b>，已经保留各自的合理结果并在列表里标出来了。';
+  var failed = [];
+  for(var j = 0; j < rows.length; j++) if(!rows[j].ok) failed.push(rows[j].name);
+  if(failed.length) html += '<br>失败：' + esc(failed.slice(0, 5).join('、')) + (failed.length > 5 ? ' 等' : '');
+  $('summary').innerHTML = html;
+}
+function runAll(){
+  if(busy) return;
+  var o = checkReady(false);
+  if(!o) return;
+  var used = {}, files = [], rows = [], total = items.length, t0 = Date.now();
+  busy = true; cancelFlag = false; syncButtons();
+  hideMsg('emsg');
+  for(var k = 0; k < items.length; k++){ items[k].status = ''; items[k].stErr = false; items[k].outSize = 0; }
+  renderThumbs(); renderList();
+
+  var i = 0;
+  function loop(){
+    if(cancelFlag || i >= total){ finish(); return; }
+    var it = items[i];
+    it.status = '处理中';
+    setThumbStatus(it);
+    setProgress(i / total, '正在处理第 ' + (i + 1) + ' / ' + total + ' 张：' + it.name);
+    processItem(it, o, null).then(function(res){
+      if(cancelFlag){ i++; setTimeout(loop, 0); return; }
+      res.name = uniqueName(res.name, used);
+      files.push({ name: res.name, data: res.data });
+      rows.push({ name: it.name, ok: true, before: it.file.size, after: res.data.length, note: res.note });
+      it.outSize = res.data.length;
+      // ★ 记下真实导出分辨率，⑧ 的尺寸栏与汇总都用它（不能用预览画布尺寸）
+      it.outW = res.w; it.outH = res.h;
+      it.status = fmtSize(res.data.length);
+      it.stErr = false;
+      i++;
+      setThumbStatus(it);
+      updateRow(it);
+      setProgress(i / total, '正在处理第 ' + Math.min(i + 1, total) + ' / ' + total + ' 张…');
+      setTimeout(loop, 0);
+    }).catch(function(err){
+      rows.push({ name: it.name, ok: false, before: it.file.size, after: 0, note: '' });
+      it.status = '失败';
+      it.stErr = true;
+      i++;
+      setThumbStatus(it);
+      setProgress(i / total, '第 ' + i + ' / ' + total + ' 张失败：' + (err && err.message ? err.message : '未知原因'));
+      setTimeout(loop, 0);
+    });
+  }
+  function finish(){
+    var cancelled = cancelFlag;
+    busy = false; cancelFlag = false; syncButtons();
+    summarise(rows, t0, cancelled);
+    if(!files.length){
+      setProgress(0, '没有生成任何文件。');
+      showMsg('emsg', 'emsgtxt', '没有生成文件：可能全部处理失败了，或者你在第一张还没做完时就取消了。', 'err');
+      return;
+    }
+    setProgress(1, '正在打包 ZIP（' + files.length + ' 张）…');
+    var totalBytes = 0;
+    for(var m = 0; m < files.length; m++) totalBytes += files[m].data.length;
+    if(totalBytes > MAX_ZIP_BYTES){
+      setProgress(0, '文件总量过大，没有打包。');
+      // 给出**具体**的分批建议（份数按上限算，张数按均分给）
+      var adv = zipBatchAdvice(totalBytes, files.length);
+      showMsg('emsg', 'emsgtxt',
+        '这批共 ' + files.length + ' 张、合计 ' + fmtSize(totalBytes) + '，一次打包会吃太多内存。建议分 ' + adv.batches
+        + ' 批处理（每批约 ' + adv.per + ' 张），或者改用 JPG / WebP + 调低画质把体积压下来。', 'err');
+      files.length = 0;
+      return;
+    }
+    setTimeout(function(){
+      try{
+        var blob = buildZip(files);
+        var zipName = 'img-batch_' + stamp() + '.zip';
+        downloadBlob(blob, zipName);
+        setProgress(1, '打包完成：' + zipName + '（' + fmtSize(blob.size) + '），浏览器应该已经开始下载了。');
+        var s = lastSummary;
+        showMsg('emsg', 'emsgtxt', '完成：成功 ' + s.ok + ' 张' + (s.fail ? '、失败 ' + s.fail + ' 张' : '')
+          + '，打包成 ' + zipName + '（' + fmtSize(blob.size) + '），总体积 ' + fmtSize(s.before) + ' → ' + fmtSize(s.after) + '。', s.fail ? 'warn' : 'ok');
+      }catch(err){
+        showMsg('emsg', 'emsgtxt', '打包失败：' + (err && err.message ? err.message : '未知原因'), 'err');
+        setProgress(0, '打包失败。');
+      }
+      files.length = 0;
+      files = null;
+    }, 30);
+  }
+  loop();
+}
+function runOne(){
+  if(busy) return;
+  var o = checkReady(true);
+  if(!o) return;
+  var it = selItem();
+  busy = true; syncButtons();
+  setProgress(0.15, '正在处理：' + it.name);
+  processItem(it, o, null).then(function(res){
+    busy = false; syncButtons();
+    it.outSize = res.data.length;
+    it.outW = res.w; it.outH = res.h;      // 真实导出分辨率（⑧ 尺寸栏用）
+    it.status = fmtSize(res.data.length);
+    it.stErr = false;
+    setThumbStatus(it); updateRow(it);
+    var blob = new Blob([res.data], { type: 'application/octet-stream' });
+    downloadBlob(blob, res.name);
+    setProgress(1, '已下载：' + res.name + '（' + fmtSize(blob.size) + '，' + res.w + ' × ' + res.h + '）' + (res.note ? ' · ' + res.note : ''));
+    flash('已下载这一张：' + res.name, 'ok');
+    res.data = null;
+  }).catch(function(err){
+    busy = false; syncButtons();
+    setProgress(0, '处理失败。');
+    flash('这一张处理失败了：' + (err && err.message ? err.message : '未知原因'), 'err');
+  });
+}
+
+/* ===================== 事件绑定 ===================== */
+function bindRanges(){
+  var list = document.querySelectorAll('input[type=range]');
+  for(var i = 0; i < list.length; i++){
+    (function(el){
+      var out = $(el.id + '-v');
+      var unit = el.getAttribute('data-unit') || '';
+      function show(){ if(out) out.textContent = el.value + unit; }
+      el.addEventListener('input', show);
+      show();
+    })(list[i]);
+  }
+  var colors = document.querySelectorAll('input[type=color]');
+  for(var j = 0; j < colors.length; j++){
+    (function(el){
+      var out = $(el.id + '-v');
+      function show(){ if(out) out.textContent = colorName(el.value); }
+      el.addEventListener('input', show);
+      show();
+    })(colors[j]);
+  }
+}
+function bindAll(){
+  var drop = $('drop'), file = $('file');
+  drop.addEventListener('click', function(){ if(!busy) file.click(); });
+  file.addEventListener('change', function(){ addFiles(file.files); file.value = ''; });
+  ['dragenter', 'dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(busy) return;
+    var dt = e.dataTransfer;
+    if(dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  // Ctrl + V 粘贴（截图 / 复制的图片）
+  window.addEventListener('paste', function(e){
+    if(busy) return;
+    var cb = e.clipboardData;
+    if(!cb) return;
+    var out = [];
+    var fs = cb.files;
+    if(fs && fs.length){
+      for(var i = 0; i < fs.length; i++) if((fs[i].type || '').indexOf('image/') === 0) out.push(fs[i]);
+    }
+    if(!out.length && cb.items){
+      for(var j = 0; j < cb.items.length; j++){
+        var it = cb.items[j];
+        if(it.kind === 'file' && (it.type || '').indexOf('image/') === 0){
+          var f = it.getAsFile();
+          if(f) out.push(f);
+        }
+      }
+    }
+    if(out.length){
+      e.preventDefault();
+      addFiles(out);
+      flash('已从剪贴板粘贴 ' + out.length + ' 张图片。', 'ok');
+    }
+  });
+
+  $('thumbs').addEventListener('click', function(e){
+    var del = e.target.closest('[data-del]');
+    if(del){ e.stopPropagation(); if(!busy) removeItem(+del.getAttribute('data-del')); return; }
+    var t = e.target.closest('.thumb');
+    if(t && !busy) selectItem(+t.getAttribute('data-id'));
+  });
+  $('list').addEventListener('click', function(e){
+    var row = e.target.closest('.row');
+    if(row && !busy) selectItem(+row.getAttribute('data-id'));
+  });
+  $('clear').addEventListener('click', function(){ if(!busy && items.length) clearAll(); });
+
+  // 五个步骤的开关
+  var toggles = { cropOn:'card-crop', rotOn:'card-rot', sizeOn:'card-size', wmOn:'card-wm', outOn:'card-out' };
+  Object.keys(toggles).forEach(function(k){
+    $(k).addEventListener('change', function(){ syncVisibility(); scheduleRender(); });
+  });
+  // 「压到指定体积」的开关：只影响它自己那一行的显示（淡化 / 提示），单独绑一下，
+  // 免得依赖后面那个"所有输入控件"的大循环（那个循环顺序一变就会漏绑）
+  if($('targetOn')) $('targetOn').addEventListener('change', function(){ syncVisibility(); });
+
+  // 分段 / 九宫格
+  bindSeg('cropMode', function(){ syncVisibility(); scheduleRender(); });
+  bindSeg('cropRatio', function(){
+    // 比例切换：以当前框的中心为基准，按比例取最大一块，始终留在画面内
+    snapCropBoxMax();
+    syncVisibility(); scheduleRender();
+  });
+  bindSeg('rot90', function(){ syncVisibility(); scheduleRender(); });
+  bindSeg('sizeMode', function(){ syncVisibility(); scheduleRender(); });
+  bindSeg('sizeQuality', function(){ syncVisibility(); scheduleRender(); });
+  bindSeg('wmType', function(){ syncVisibility(); scheduleRender(); });
+  bindSeg('outFmt', function(){ syncVisibility(); scheduleRender(); });
+  bindPad('pad', function(){ syncVisibility(); scheduleRender(); });   // 九宫格位置也在摘要里
+  bindSeg('pvTabs', function(v){ pvTab = v; pvLayout(); }, true);
+
+  // 裁剪伸缩框
+  bindCropEditor();
+  $('cropCenter').addEventListener('click', function(){
+    if(!cropSt.box || !cropCanvasBox.W) return;
+    // 居中：只改位置、尺寸原样。直接算就好，别再绕 withBoxSize 缩一次再放回去
+    // （那样既绕又依赖"原地改"的旧行为，withBoxSize 改成纯函数后就没意义了）。
+    var b = cropSt.box;
+    b.x = Math.max(0, (1 - b.w) / 2);
+    b.y = Math.max(0, (1 - b.h) / 2);
+    drawCropOverlay(); updateCropInfo();
+    syncVisibility();   // 「居中」只改位置，但摘要里的占比/尺寸也要跟着对
+    scheduleRender();
+  });
+  $('cropReset').addEventListener('click', function(){
+    cropSt.box = cropCanvasBox.W ? defaultCropBox(cropCanvasBox.W, cropCanvasBox.H) : null;
+    drawCropOverlay(); updateCropInfo();
+    syncVisibility();
+    scheduleRender();
+  });
+  $('cropUseAll').addEventListener('click', function(){
+    // 「覆盖全部」：整张图都要（等于不裁）。默认藏起来，留给需要一键还原的人。
+    var b = cropSt.box;
+    setCropBox(b ? withBoxSize(b, 1, 1) : { x:0, y:0, w:1, h:1 }, false);
+    syncVisibility();
+    scheduleRender();
+  });
+
+  // 折叠：点箭头或点标题都能展开 / 收起
+  BLOCKS.forEach(function(k){
+    var btn = $('fold-' + k);
+    if(btn) btn.addEventListener('click', function(e){ e.stopPropagation(); toggleFold(k); });
+    var h2 = $('card-' + k).querySelector('h2');
+    if(h2) h2.addEventListener('click', function(e){
+      if(e.target.closest('.sw') || e.target.closest('input')) return;   // 点开关不算折叠
+      toggleFold(k);
+    });
+  });
+  // 「哪些组合是无损的」那段说明的小折叠（整行可点）
+  if($('fmtFmtHead')) $('fmtFmtHead').addEventListener('click', function(e){ e.preventDefault(); toggleFmtNoteFold(); });
+  applyFmtNoteFold(false);   // 默认收起
+  // P1-4：每块标题栏的「↺ 默认」+ 底部「全部恢复默认」
+  Object.keys(BLOCK_CTRLS).forEach(function(k){
+    var btn = $('rst-' + k);
+    if(btn) btn.addEventListener('click', function(e){ e.stopPropagation(); if(!busy) resetBlock(k); });
+  });
+  if($('resetAll')) $('resetAll').addEventListener('click', function(){
+    if(busy) return;
+    resetAll();
+    flash('已把全部设置恢复成默认（步骤都关掉了，图片队列没有动）。本机记住的设置也一并清除。', 'ok');
+  });
+
+  // 水印图片
+  $('wmPick').addEventListener('click', function(){ if(!busy) $('wmFile').click(); });
+  $('wmFile').addEventListener('change', function(){
+    var f = this.files && this.files[0];
+    this.value = '';
+    if(!f) return;
+    decodeFile(f).then(function(bmp){
+      releaseBmp(getWatermarkImage());
+      setWatermarkImage(bmp, f.name);
+      $('wmBox').classList.remove('hidden');
+      $('wmName').textContent = f.name + '（' + bmp.width + ' × ' + bmp.height + '）';
+      var s = Math.min(1, 96 / Math.max(bmp.width, bmp.height));
+      var c = newCanvas(Math.max(1, Math.round(bmp.width * s)), Math.max(1, Math.round(bmp.height * s)));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      $('wmPrev').src = c.toDataURL('image/png');
+      releaseCanvas(c);
+      syncVisibility(); scheduleRender();
+    }).catch(function(){ flash('这张水印图片读不出来，换一张试试。', 'err'); });
+  });
+
+  // 所有输入类控件：改了就重算预览 + 更新提示
+  var inputs = document.querySelectorAll('input,select,textarea');
+  for(var i = 0; i < inputs.length; i++){
+    (function(el){
+      if(el.type === 'file') return;
+      var ev = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(ev, function(){
+        // 自定义比例改了 → 框要跟着重新贴合
+        if(el.id === 'cropCw' || el.id === 'cropCh'){
+          snapCropBoxMax();
+        }
+        // ★ 参数一变，标题栏那行摘要**立刻**跟着变（用户 2026-10-14：
+        //   「只要启用后，下面的参数只要变化，上面就会跟随变化」）。
+        //   ⚠️ 这里原来只调 scheduleRender()（重算预览），**从来不刷新摘要** ——
+        //   所以画质滑块 / 翻转 / 平铺 / 旋转角度 这类没有单独接线的控件改了以后，
+        //   摘要一直停在旧值，必须把「启用」关掉再打开才更新。
+        syncVisibility();
+        scheduleRender();
+      });
+    })(inputs[i]);
+  }
+  $('suffix').addEventListener('input', function(){ syncVisibility(); });
+
+  // 取消
+  $('runAll').addEventListener('click', runAll);
+  $('runOne').addEventListener('click', runOne);
+  $('cancel').addEventListener('click', function(){
+    if(!busy) return;
+    cancelFlag = true;
+    setProgress(0, '正在取消…（当前这张处理完就停）');
+  });
+
+  // 关闭消息
+  var dis = document.querySelectorAll('[data-dismiss]');
+  for(var d = 0; d < dis.length; d++){
+    (function(b){ b.addEventListener('click', function(){ hideMsg(b.getAttribute('data-dismiss')); }); })(dis[d]);
+  }
+
+  // 上一张 / 下一张 / 键盘
+  $('prev').addEventListener('click', function(){ var i2 = selIndex(); if(i2 > 0 && !busy) selectItem(items[i2 - 1].id); });
+  $('next').addEventListener('click', function(){ var i2 = selIndex(); if(i2 >= 0 && i2 < items.length - 1 && !busy) selectItem(items[i2 + 1].id); });
+  document.addEventListener('keydown', function(e){
+    if(busy || !items.length) return;
+    if(e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    if(e.key === 'ArrowLeft') $('prev').click();
+    if(e.key === 'ArrowRight') $('next').click();
+  });
+  window.addEventListener('resize', function(){ pvLayout(); });
+  window.addEventListener('beforeunload', function(e){
+    if(busy){ e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+/* ===================== 启动 ===================== */
+// 顺序很关键：
+//   ① 先恢复"记住的设置"（写 DOM 值 + 折叠态）
+//   ② 再绑定（数值标签、通用监听）
+//   ③ 再定折叠态 / 同步可见性
+//   ④ **最后**才挂验收入口 —— 否则 __imgBatchTest 里那些"快照型"字段
+//      （比如 folded）会停在恢复之前的状态，验收脚本读到的是旧的
+var restoredSettings = restoreSettings();
+bindRanges();
+bindAll();
+applyFold();          // 定下折叠态（出厂 = 5 块全折叠；有记住的就用记住的）
+syncVisibility();
+renderThumbs();
+renderList();
+updateCount();
+refreshAll();
+updateExifInfo();
+setProgress(0, '还没有开始处理。');
+if(restoredSettings) flash('已恢复上次用的设置（底部「全部恢复默认」可以清掉）。', 'ok');
+
+/* 自动化验收入口（**仅供自动化验收，无任何写权限**：只有几个只读访问器 + 引擎函数的引用）。
+   用途：真浏览器里逐张读「界面声称的输出尺寸」再与导出实测对账 ——
+   "界面说 600×600、导出 450×450" 那类 bug 就是这样一次锁定的（比读代码猜快得多）。
+   挂在 window 上只是几个引用，不影响任何行为；不需要可以整段删掉。 */
+if(typeof globalThis !== 'undefined'){
+  globalThis.__imgBatchTest = {
+    items: function(){ return items; },
+    readOpts: readOpts,
+    processItem: processItem,
+    cropRect: cropRect,
+    selectItem: selectItem,
+    runAll: runAll,
+    setCropBox: setCropBox,
+    cropBoxSnapshot: cropBoxSnapshot,
+    /* 拖拽相关的纯函数：验收脚本要能"走拖拽实际调用的那个函数"来验算，
+       只测 setCropBox 是抓不到"起点快照丢 frac"那类问题的 */
+    carryBoxMeta: carryBoxMeta,
+    dragCropBox: dragCropBox,
+    fitBoxToRatio: fitBoxToRatio,
+    lockBoxToRatio: lockBoxToRatio,
+    maxRatioSize: maxRatioSize,
+    withBoxSize: withBoxSize,
+    moveBox: moveBox,
+    resizeBox: resizeBox,
+    renderCropEditor: renderCropEditor,
+    applyFmtNoteFold: applyFmtNoteFold,
+    syncVisibility: syncVisibility,
+    finalExportSize: finalExportSize,
+    finalCropRectOf: finalCropRectOf,
+    mapRectTo: mapRectTo,
+    cropBoxSnapshotRaw: function(){ return cropSt.box; },
+    resetBlock: resetBlock,
+    resetAll: resetAll,
+    settingsSnapshot: settingsSnapshot,
+    restoreSettings: restoreSettings,
+    forgetSettings: forgetSettings,
+    loadStoredSettings: loadStoredSettings,
+    zipBatchAdvice: zipBatchAdvice,
+    whyCantOpen: whyCantOpen,
+    FACTORY: FACTORY,
+    FACTORY_SEG: FACTORY_SEG,
+    BLOCK_CTRLS: BLOCK_CTRLS,
+    folded: foldSnapshot()
+  };
+}
+})();
+</script>
+<!-- SITE-INJECT-START -->
+<link rel="icon" href="../favicon.ico">
+<link rel="apple-touch-icon" href="../favicon.ico">
+<style>
+#site-back{position:fixed;left:14px;bottom:14px;z-index:2147483000;
+  display:inline-flex;align-items:center;gap:8px;
+  font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  opacity:.92;transition:opacity .15s}
+#site-back:hover{opacity:1}
+#site-back .site-home{display:inline-flex;align-items:center;color:#22243a;
+  background:rgba(255,255,255,.94);border:1px solid #e4e6ef;border-radius:999px;
+  padding:9px 14px;text-decoration:none;box-shadow:0 4px 14px rgba(34,36,58,.14);
+  transition:transform .15s}
+#site-back .site-home:hover{transform:translateY(-1px)}
+#site-back .site-chips{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+#site-back .site-chips::before{content:"相关";color:#7a7d94;font-size:12px;font-weight:600}
+#site-back .site-chip{color:#1d9e75;background:rgba(255,255,255,.92);border:1px solid #cfe9df;
+  border-radius:999px;padding:7px 12px;text-decoration:none;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(34,36,58,.10);transition:background .15s,transform .15s}
+#site-back .site-chip:hover{background:#eefaf5;transform:translateY(-1px)}
+@media (max-width:560px){
+  #site-back{left:10px;bottom:10px;gap:6px;flex-wrap:wrap;max-width:calc(100% - 20px)}
+  #site-back .site-home{padding:8px 12px;font-size:12px}
+  #site-back .site-chips{gap:4px}
+  #site-back .site-chips::before{display:none}
+  #site-back .site-chip{padding:6px 10px;font-size:12px}
+}
+</style>
+<span id="site-back"><a class="site-home" href="../index.html" title="回到工具箱">← 工具箱</a><span class="site-chips"><a class="site-chip" href="./img-crop.html">图片裁剪</a><a class="site-chip" href="./img-compress.html">图片压缩</a></span></span>
+<!-- SITE-INJECT-END -->
+</body>
+</html>

@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="description" content="批量给图片加水印：文字水印 / 图片水印、九宫格定位、平铺、一键打包 ZIP 下载。全部在浏览器本地完成，文件不上传，断网可用。">
+<title>批量加水印 · 纯本地处理 · 文件不上传</title>
+<style>
+:root{
+  --bg:#f5f7fb; --card:#ffffff; --line:#e3e6f0; --line2:#eef0f7;
+  --text:#1f2340; --muted:#7c819a; --brand:#3f6ef0; --brand2:#eaf1ff;
+  --ok:#0f9d58; --warn:#d97706; --err:#dc2626;
+  --r:14px; --rs:10px;
+  --shadow:0 1px 2px rgba(20,26,60,.05), 0 8px 20px rgba(20,26,60,.05);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--text);
+  font:14px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  -webkit-text-size-adjust:100%; -webkit-tap-highlight-color:transparent;
+}
+.wrap{max-width:1100px;margin:0 auto;padding:18px 14px 56px}
+h1,h2,h3{margin:0}
+.hidden{display:none !important}
+
+/* ---------- 顶部 ---------- */
+.hero{padding:4px 2px 16px}
+.hero h1{font-size:24px;letter-spacing:.5px}
+.slogan{margin:8px 0 0;font-size:14px;color:var(--brand)}
+.slogan b{background:var(--brand2);border:1px solid #cfe0ff;border-radius:999px;padding:3px 10px;font-weight:700}
+.lead{margin:10px 0 0;color:var(--muted);font-size:13px;line-height:1.8}
+
+/* ---------- 卡片 ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);padding:14px;margin-bottom:14px}
+.card>h2{font-size:15px;display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.card>h2 .no{width:20px;height:20px;flex:0 0 20px;border-radius:50%;background:var(--brand);color:#fff;font-size:12px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.card>h2 .tip{margin-left:auto;font-size:12px;color:var(--muted);font-weight:400}
+
+/* ---------- 选图区 ---------- */
+.drop{border:2px dashed #c9d2e8;border-radius:var(--r);background:#fbfcff;padding:22px 14px;text-align:center;cursor:pointer;transition:.16s}
+.drop:hover{border-color:var(--brand);background:var(--brand2)}
+.drop.over{border-color:var(--brand);background:var(--brand2);transform:scale(.995)}
+.drop .ico{font-size:26px;line-height:1;color:var(--brand)}
+.drop .m1{margin-top:8px;font-size:15px;font-weight:600}
+.drop .m2{margin-top:4px;font-size:12.5px;color:var(--muted)}
+.drop input{display:none}
+.bar{display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap}
+.count{font-size:13px;color:var(--muted)}
+.count b{color:var(--text);font-size:15px}
+.spacer{flex:1}
+
+/* ---------- 缩略图列表 ---------- */
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
+.thumbs:empty{display:none}
+.thumb{position:relative;border:2px solid var(--line);border-radius:var(--rs);overflow:hidden;background:#fff;cursor:pointer;aspect-ratio:1/1}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb .no{position:absolute;left:3px;top:3px;background:rgba(31,35,64,.72);color:#fff;font-size:11px;line-height:1;padding:3px 5px;border-radius:6px}
+.thumb .big{position:absolute;left:3px;bottom:3px;background:rgba(217,119,6,.92);color:#fff;font-size:10.5px;line-height:1;padding:3px 5px;border-radius:6px}
+.thumb .x{position:absolute;right:2px;top:2px;width:20px;height:20px;border:0;border-radius:50%;background:rgba(31,35,64,.66);color:#fff;font-size:13px;line-height:1;cursor:pointer;padding:0}
+.thumb .x:hover{background:var(--err)}
+.thumb.on{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand2)}
+.thumb.on::after{content:"预览中";position:absolute;right:0;bottom:0;left:0;background:var(--brand);color:#fff;font-size:10.5px;text-align:center;line-height:18px}
+.thumb .st{position:absolute;inset:auto 0 0 0;background:rgba(15,157,88,.9);color:#fff;font-size:10.5px;text-align:center;line-height:16px}
+
+/* ---------- 通用控件 ---------- */
+.seg{display:flex;background:var(--line2);border-radius:var(--rs);padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;font:inherit;font-size:13px;color:var(--muted);padding:8px 6px;border-radius:7px;cursor:pointer;min-height:36px}
+.seg button.on{background:#fff;color:var(--brand);font-weight:700;box-shadow:0 1px 3px rgba(20,26,60,.12)}
+.field{display:flex;align-items:center;gap:9px;margin:11px 0;min-height:32px}
+.field>.k{flex:0 0 74px;font-size:12.5px;color:var(--muted)}
+.field>.v{flex:0 0 52px;text-align:right;font-size:12.5px;color:var(--text);font-variant-numeric:tabular-nums}
+.field input[type=range]{flex:1;min-width:0;accent-color:var(--brand);height:24px}
+.field input[type=text]{flex:1;min-width:0}
+.field input[type=color]{width:40px;height:28px;padding:0;border:1px solid var(--line);border-radius:7px;background:#fff}
+.field.wide{display:block}
+.field.wide>.k{display:block;margin-bottom:6px}
+input[type=text]{font:inherit;font-size:16px;padding:9px 11px;border:1px solid var(--line);border-radius:9px;background:#fcfdff;color:var(--text);width:100%}
+input[type=text]:focus{outline:0;border-color:var(--brand);background:#fff}
+input[type=range]{-webkit-appearance:none;appearance:none;background:transparent}
+input[type=range]::-webkit-slider-runnable-track{height:6px;border-radius:3px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-7px;border-radius:50%;background:#fff;border:2px solid var(--brand);box-shadow:0 1px 4px rgba(20,26,60,.22)}
+input[type=range]::-moz-range-track{height:6px;border-radius:3px;background:var(--line)}
+input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#fff;border:2px solid var(--brand)}
+.sw{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text);cursor:pointer;user-select:none}
+.sw input{width:18px;height:18px;accent-color:var(--brand);margin:0}
+.btn{font:inherit;font-size:13.5px;border:1px solid var(--line);background:#fff;color:var(--text);border-radius:9px;padding:9px 14px;cursor:pointer;min-height:38px}
+.btn:hover:not(:disabled){border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.btn.primary:hover:not(:disabled){background:#3560e0;color:#fff}
+.btn.ghost{background:#fbfcff}
+.btn.sm{font-size:12.5px;padding:6px 10px;min-height:32px}
+.hint{font-size:12.5px;color:var(--muted);line-height:1.7;margin:8px 0 0}
+.hint.warn{color:var(--warn)}
+.hint.err{color:var(--err)}
+.hint.ok{color:var(--ok)}
+.sub{border-top:1px dashed var(--line);margin-top:12px;padding-top:12px}
+.sub>.t{font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.thumb-wm{display:flex;align-items:center;gap:10px;margin-top:10px}
+.thumb-wm img{max-width:64px;max-height:64px;border:1px solid var(--line);border-radius:8px;background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/12px 12px}
+.thumb-wm .n{font-size:12.5px;color:var(--muted);word-break:break-all}
+
+/* ---------- 位置九宫格 ---------- */
+.posrow{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:186px;flex:0 0 auto}
+.pad button{font:inherit;font-size:12px;min-height:36px;border:1px solid var(--line);background:#fff;color:var(--muted);border-radius:8px;cursor:pointer;padding:0}
+.pad button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:700}
+.pad.dis{opacity:.35;pointer-events:none}
+.posside{flex:1;min-width:150px}
+
+/* ---------- 预览 ---------- */
+.pvhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px}
+.pvhead .idx{font-size:13px;color:var(--muted)}
+.pvhead .idx b{color:var(--text)}
+.pvbox{border:1px solid var(--line);border-radius:var(--rs);background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;
+  min-height:190px;display:flex;align-items:center;justify-content:center;padding:8px;overflow:hidden}
+.pvbox canvas{max-width:100%;display:block;border-radius:4px}
+.pvbox .ph{color:var(--muted);font-size:13px;text-align:center;padding:40px 12px;line-height:1.9}
+.pvinfo{font-size:12.5px;color:var(--muted);margin-top:8px;display:flex;gap:12px;flex-wrap:wrap}
+
+/* ---------- 进度 ---------- */
+.prog{height:8px;background:var(--line2);border-radius:999px;overflow:hidden;margin:12px 0 8px}
+.prog>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#3f6ef0,#6f9bff);transition:width .18s}
+.pstat{font-size:12.5px;color:var(--muted);min-height:20px;word-break:break-all}
+.msg{display:flex;gap:8px;align-items:flex-start;font-size:13px;border-radius:var(--rs);padding:10px 12px;margin-top:12px;line-height:1.7}
+.msg.ok{background:#eafaf1;border:1px solid #bfe9d3;color:#0b7a45}
+.msg.warn{background:#fff7e8;border:1px solid #f6e0b5;color:#8a5a05}
+.msg.err{background:#fdecec;border:1px solid #f6c9c9;color:#a51f1f}
+.msg .x{margin-left:auto;border:0;background:transparent;color:inherit;font-size:16px;cursor:pointer;line-height:1;padding:0 2px}
+.grid2{display:block}
+.foot{margin-top:18px;font-size:12px;color:var(--muted);text-align:center;line-height:1.9}
+
+@media (min-width:920px){
+  .grid2{display:grid;grid-template-columns:390px 1fr;gap:14px;align-items:start}
+  .grid2>.card{margin-bottom:0}
+}
+@media (max-width:560px){
+  .wrap{padding:14px 10px 44px}
+  .hero h1{font-size:21px}
+  .card{padding:12px;border-radius:12px}
+  .field>.k{flex:0 0 64px;font-size:12px}
+  .field>.v{flex:0 0 46px}
+  .thumbs{grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:6px}
+  .pad{width:100%;max-width:230px}
+  .seg button{font-size:12.5px}
+  .btn{padding:9px 12px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <h1>批量加水印</h1>
+    <p class="slogan"><b>纯本地处理</b> · 文件不上传 · 断网可用</p>
+    <p class="lead">一次给多张图片加上文字水印或图片水印，位置、大小、透明度统一设置，处理完打包成一个 ZIP 下载。所有运算都在你自己的浏览器里完成，图片不会离开这台设备。</p>
+  </div>
+
+  <!-- ① 选图 -->
+  <section class="card">
+    <h2><span class="no">1</span>选图片<span class="tip">JPG / PNG / WebP</span></h2>
+    <div class="drop" id="drop">
+      <div class="ico">＋</div>
+      <div class="m1">点击这里选择图片，或把图片直接拖进来</div>
+      <div class="m2">可以一次选很多张，也可以拖一个文件夹里的多张图</div>
+      <input type="file" id="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+    </div>
+    <div class="bar">
+      <span class="count" id="count">还没有选图片</span>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="clear" disabled>清空全部</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="msg warn hidden" id="bigmsg"><span id="bigtxt"></span><button class="x" data-dismiss="bigmsg">×</button></div>
+    <div class="msg hidden" id="msg"><span id="msgtxt"></span><button class="x" data-dismiss="msg">×</button></div>
+  </section>
+
+  <!-- ② 设置 + ③ 预览 -->
+  <div class="grid2">
+
+    <section class="card">
+      <h2><span class="no">2</span>水印设置</h2>
+
+      <div class="seg" id="segType">
+        <button type="button" class="on" data-v="text">文字水印</button>
+        <button type="button" data-v="image">图片水印</button>
+      </div>
+
+      <!-- 文字水印 -->
+      <div id="panelText">
+        <div class="field wide" style="margin-top:12px">
+          <span class="k">水印文字</span>
+          <input type="text" id="wtext" value="" placeholder="例如：AI 绘梦师葉子" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="field"><span class="k">字号</span><input type="range" id="wsize" min="1" max="30" step="1" value="5" data-unit="%"><span class="v" id="wsize-v">5%</span></div>
+        <div class="field"><span class="k">颜色</span><input type="color" id="wcolor" value="#ffffff"><span class="v" id="wcolor-v">白色</span></div>
+        <div class="field"><span class="k">不透明度</span><input type="range" id="walpha" min="5" max="100" step="1" value="35" data-unit="%"><span class="v" id="walpha-v">35%</span></div>
+        <div class="field"><span class="k">旋转角度</span><input type="range" id="wrot" min="-180" max="180" step="1" value="0" data-unit="°"><span class="v" id="wrot-v">0°</span></div>
+        <div class="sub">
+          <label class="sw"><input type="checkbox" id="wstroke"><span>给文字加描边（浅色水印压在亮背景上更清楚）</span></label>
+          <div id="strokeOpts" class="hidden">
+            <div class="field"><span class="k">描边宽度</span><input type="range" id="wstrokew" min="1" max="25" step="1" value="10" data-unit="%"><span class="v" id="wstrokew-v">10%</span></div>
+            <div class="field"><span class="k">描边颜色</span><input type="color" id="wstrokec" value="#000000"><span class="v" id="wstrokec-v">黑色</span></div>
+          </div>
+          <label class="sw" style="margin-top:8px"><input type="checkbox" id="wshadow"><span>给文字加阴影</span></label>
+          <div id="shadowOpts" class="hidden">
+            <div class="field"><span class="k">阴影模糊</span><input type="range" id="wshblur" min="0" max="60" step="1" value="15" data-unit="%"><span class="v" id="wshblur-v">15%</span></div>
+            <div class="field"><span class="k">阴影偏移</span><input type="range" id="wshoff" min="0" max="60" step="1" value="8" data-unit="%"><span class="v" id="wshoff-v">8%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 图片水印 -->
+      <div id="panelImage" class="hidden">
+        <div class="field wide" style="margin-top:12px">
+          <span class="k">水印图片</span>
+          <button class="btn ghost sm" id="wmPick" type="button">选择一张图片</button>
+          <input type="file" id="wmFile" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="display:none">
+        </div>
+        <div class="thumb-wm hidden" id="wmBox">
+          <img id="wmPrev" alt="水印图片预览">
+          <span class="n" id="wmName"></span>
+        </div>
+        <p class="hint">建议用<strong>透明底的 PNG</strong>（比如已经去掉背景的 logo），贴在照片上不会带白底方块。</p>
+        <div class="field"><span class="k">大小</span><input type="range" id="wmscale" min="1" max="100" step="1" value="18" data-unit="%"><span class="v" id="wmscale-v">18%</span></div>
+        <div class="field"><span class="k">不透明度</span><input type="range" id="wmalpha" min="5" max="100" step="1" value="60" data-unit="%"><span class="v" id="wmalpha-v">60%</span></div>
+        <div class="field"><span class="k">旋转角度</span><input type="range" id="wmrot" min="-180" max="180" step="1" value="0" data-unit="°"><span class="v" id="wmrot-v">0°</span></div>
+      </div>
+
+      <div class="sub">
+        <div class="t">水印放在哪里</div>
+        <div class="posrow">
+          <div class="pad" id="pad">
+            <button type="button" data-v="tl">左上</button>
+            <button type="button" data-v="tc">上中</button>
+            <button type="button" data-v="tr">右上</button>
+            <button type="button" data-v="ml">左中</button>
+            <button type="button" data-v="mc">正中</button>
+            <button type="button" data-v="mr">右中</button>
+            <button type="button" data-v="bl">左下</button>
+            <button type="button" data-v="bc">下中</button>
+            <button type="button" class="on" data-v="br">右下</button>
+          </div>
+          <div class="posside">
+            <label class="sw"><input type="checkbox" id="tile"><span>平铺整张图</span></label>
+            <p class="hint" id="tileHint">勾上以后水印会斜着铺满画面（勾上后九宫格位置就不起作用了）。</p>
+            <div class="field" style="margin-bottom:0"><span class="k">边距</span><input type="range" id="margin" min="0" max="20" step="1" value="3" data-unit="%"><span class="v" id="margin-v">3%</span></div>
+          </div>
+        </div>
+        <p class="hint">字号 / 大小 / 边距都是<strong>按图片短边的百分比</strong>算的，所以大图小图出来的效果一样，不用每张重设。</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2><span class="no">3</span>效果预览<span class="tip">导出的是原图尺寸</span></h2>
+      <div class="pvhead">
+        <span class="idx" id="pvindex">第 0 / 共 0 张</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" id="prev" disabled>上一张</button>
+        <button class="btn ghost sm" id="next" disabled>下一张</button>
+      </div>
+      <div class="pvbox" id="pvbox">
+        <div class="ph" id="pvph">还没有选图片<br>先在第一步选择要加水印的图片</div>
+        <canvas id="pv" class="hidden"></canvas>
+      </div>
+      <div class="pvinfo" id="pvinfo"></div>
+      <p class="hint">点上面缩略图里的任意一张，就能切换预览它。预览只是缩小显示，实际导出的是原图分辨率。</p>
+    </section>
+
+  </div>
+
+  <!-- ④ 导出 -->
+  <section class="card">
+    <h2><span class="no">4</span>批量导出<span class="tip">一张一张按顺序处理</span></h2>
+
+    <div class="field wide">
+      <span class="k">输出格式</span>
+      <div class="seg" id="segFmt">
+        <button type="button" class="on" data-v="keep">原格式</button>
+        <button type="button" data-v="jpeg">统一 JPG</button>
+        <button type="button" data-v="png">统一 PNG</button>
+      </div>
+    </div>
+
+    <div class="field"><span class="k">JPG 质量</span><input type="range" id="quality" min="50" max="100" step="1" value="92" data-unit="%"><span class="v" id="quality-v">92%</span></div>
+    <p class="hint" id="qualityHint">质量只对 JPG 生效：数字越高越清楚、文件越大。PNG 是无损的，没有这个选项。</p>
+
+    <div class="field wide">
+      <span class="k">输出文件名后缀</span>
+      <input type="text" id="suffix" value="_wm" placeholder="_wm" autocomplete="off" spellcheck="false" style="max-width:200px">
+    </div>
+    <p class="hint" id="suffixHint">例如原图 <b>照片.jpg</b> → 输出 <b>照片_wm.jpg</b>；后缀可以改成你自己喜欢的。</p>
+
+    <div class="bar" style="margin-top:14px">
+      <button class="btn primary" id="runAll" disabled>一键处理全部 → 打包下载 ZIP</button>
+      <button class="btn ghost" id="runOne" disabled>只下载当前这张</button>
+      <button class="btn ghost hidden" id="cancel">取消</button>
+    </div>
+
+    <div class="prog"><i id="bar"></i></div>
+    <div class="pstat" id="pstat">还没有开始处理。</div>
+
+    <div class="msg hidden" id="emsg"><span id="emsgtxt"></span><button class="x" data-dismiss="emsg">×</button></div>
+
+    <p class="hint" style="margin-top:14px">处理大图（几千万像素）会比较慢，每一张的耗时都不一样，页面会实时显示进度，请不要关掉这个页面。图片是一张一张处理的，不会一次性都塞进内存。</p>
+  </section>
+
+  <p class="foot">批量加水印 · 纯前端单文件工具 · 双击即用<br>所有处理都在本机浏览器完成：不联网、不上传、不留服务器记录</p>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   批量加水印 —— 纯本地单文件工具
+   设计要点：
+   1) 顺序处理：任何时候只解码 1 张图，画完立刻释放 canvas / ImageBitmap
+   2) 缩略图在导入时生成（96px dataURL），列表不保留大图
+   3) 预览单独用一张 ≤1000px 的小画布，滑动参数只重绘这张小图
+   4) 导出：复用 store 模式 ZIP（CRC32 + 本地文件头 + 中央目录）
+   ===================================================================== */
+
+var THUMB_SIDE = 96;
+var PREVIEW_SIDE = 1000;
+var BIG_SIDE = 4000;
+var FONT_STACK = '"PingFang SC","Microsoft YaHei","Hiragino Sans GB",-apple-system,"Segoe UI",sans-serif';
+var OK_TYPE = { 'image/jpeg':1, 'image/png':1, 'image/webp':1 };
+var MAX_ZIP_BYTES = 1200 * 1024 * 1024;
+
+function $(id){ return document.getElementById(id); }
+function pad2(n){ return (n < 10 ? '0' : '') + n; }
+function fmtSize(b){
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(0) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+function extOf(name){ var m = /\.([a-z0-9]+)$/i.exec(name); return m ? m[1].toLowerCase() : ''; }
+function baseOf(name){ var i = name.lastIndexOf('.'); return i > 0 ? name.slice(0, i) : name; }
+function nextTick(){ return new Promise(function(r){ setTimeout(r, 0); }); }
+function colorName(hex){
+  var map = { '#ffffff':'白色', '#000000':'黑色', '#ff0000':'红色', '#ffd400':'黄色', '#ffe100':'黄色',
+              '#3f6ef0':'蓝色', '#00a86b':'绿色', '#ff7a00':'橙色', '#888888':'灰色', '#ff69b4':'粉色' };
+  return map[String(hex).toLowerCase()] || hex;
+}
+
+/* ===================== 消息条 ===================== */
+var msgTimer = null;
+function showMsg(elId, txtId, text, kind){
+  var box = $(elId);
+  box.className = 'msg ' + (kind || 'ok');
+  $(txtId).textContent = text;
+  box.classList.remove('hidden');
+}
+function hideMsg(elId){ $(elId).classList.add('hidden'); }
+function flash(text, kind){
+  showMsg('msg', 'msgtxt', text, kind);
+  if(msgTimer) clearTimeout(msgTimer);
+  msgTimer = setTimeout(function(){ hideMsg('msg'); }, 7000);
+}
+
+/* ===================== 状态 ===================== */
+var items = [];          // {id,file,name,base,ext,w,h,big,thumb}
+var seq = 0;
+var selId = 0;
+var previewSrc = null;   // 当前预览用的小画布（≤1000px）
+var pvToken = 0;
+var wmType = 'text';
+var outFmt = 'keep';
+var posVal = 'br';
+var wmBitmap = null;     // 图片水印（ImageBitmap 或 Image）
+var wmName = '';
+var busy = false;
+var cancelFlag = false;
+
+function byId(id){
+  for(var i = 0; i < items.length; i++) if(items[i].id === id) return items[i];
+  return null;
+}
+function selIndex(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return i;
+  return -1;
+}
+
+/* ===================== 解码与释放 ===================== */
+function decodeViaImg(file){
+  return new Promise(function(res, rej){
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function(){ URL.revokeObjectURL(url); res(img); };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('这张图片打不开')); };
+    img.src = url;
+  });
+}
+function decodeFile(file){
+  if(window.createImageBitmap){
+    return createImageBitmap(file, { imageOrientation:'from-image' })
+      .catch(function(){ return createImageBitmap(file); })
+      .catch(function(){ return decodeViaImg(file); });
+  }
+  return decodeViaImg(file);
+}
+function releaseBmp(b){
+  if(!b) return;
+  if(typeof b.close === 'function'){ try{ b.close(); }catch(e){} }
+  else if(b.tagName === 'IMG'){ b.src = ''; }
+}
+function releaseCanvas(c){
+  if(!c) return;
+  c.width = 0; c.height = 0;
+}
+
+/* ===================== 添加 / 移除图片 ===================== */
+function addFiles(fileList){
+  var files = Array.prototype.slice.call(fileList || []);
+  if(!files.length) return;
+  var accepted = [], skipped = [];
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var t = (f.type || '').toLowerCase();
+    var e = extOf(f.name);
+    if(OK_TYPE[t] || e === 'jpg' || e === 'jpeg' || e === 'png' || e === 'webp') accepted.push(f);
+    else skipped.push(f.name);
+  }
+  if(!accepted.length){
+    flash('这些文件都不是 JPG / PNG / WebP 图片，没有添加。', 'err');
+    return;
+  }
+  busy = true; syncButtons();
+  var done = 0, failed = [];
+  function step(){
+    if(done >= accepted.length){
+      busy = false; syncButtons();
+      if(items.length && selIndex() < 0) selectItem(items[0].id);
+      else { renderThumbs(); refreshAll(); }
+      var m = '已添加 ' + accepted.length + ' 张图片。';
+      if(skipped.length) m += ' 跳过 ' + skipped.length + ' 个不支持的文件。';
+      if(failed.length) m += ' 有 ' + failed.length + ' 张读不出来（可能文件损坏）。';
+      flash(m, failed.length ? 'warn' : 'ok');
+      updateBig();
+      return;
+    }
+    var f = accepted[done];
+    $('count').textContent = '正在读取图片 ' + (done + 1) + ' / ' + accepted.length + ' …';
+    decodeFile(f).then(function(bmp){
+      var item = {
+        id: ++seq, file: f, name: f.name, base: baseOf(f.name), ext: extOf(f.name),
+        w: bmp.width, h: bmp.height, big: Math.max(bmp.width, bmp.height) > BIG_SIDE,
+        thumb: makeThumb(bmp), status: ''
+      };
+      releaseBmp(bmp);
+      items.push(item);
+      done++;
+      updateCount();
+      if(done % 8 === 0) renderThumbs();
+      setTimeout(step, 0);
+    }).catch(function(){
+      failed.push(f.name);
+      done++;
+      setTimeout(step, 0);
+    });
+  }
+  step();
+}
+function makeThumb(bmp){
+  var s = Math.min(1, THUMB_SIDE / Math.max(bmp.width, bmp.height));
+  var w = Math.max(1, Math.round(bmp.width * s));
+  var h = Math.max(1, Math.round(bmp.height * s));
+  var c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  var ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
+  ctx.drawImage(bmp, 0, 0, w, h);
+  var url = c.toDataURL('image/jpeg', 0.72);
+  releaseCanvas(c);
+  return url;
+}
+function removeItem(id){
+  var idx = -1;
+  for(var i = 0; i < items.length; i++) if(items[i].id === id) idx = i;
+  if(idx < 0) return;
+  var wasSel = (items[idx].id === selId);
+  items.splice(idx, 1);
+  if(wasSel){
+    selId = 0; previewSrc = null;
+    if(items.length){ selectItem(items[Math.min(idx, items.length - 1)].id); }
+    else { renderThumbs(); refreshAll(); }
+  } else {
+    renderThumbs(); updateCount(); refreshAll();
+  }
+  updateBig();
+}
+function clearAll(){
+  items = []; selId = 0; previewSrc = null; pvToken++;
+  $('file').value = ''; $('wmFile').value = '';
+  hideMsg('bigmsg'); hideMsg('emsg');
+  renderThumbs(); updateCount(); refreshAll();
+  setProgress(0, '还没有开始处理。');
+}
+function updateCount(){
+  var n = items.length;
+  $('count').innerHTML = n ? ('已选 <b>' + n + '</b> 张图片') : '还没有选图片';
+  $('clear').disabled = !n || busy;
+  syncButtons();
+}
+function updateBig(){
+  var n = 0;
+  for(var i = 0; i < items.length; i++) if(items[i].big) n++;
+  if(n){
+    showMsg('bigmsg', 'bigtxt', '有 ' + n + ' 张图片的长边超过 ' + BIG_SIDE + ' 像素（列表里标了「大图」）。这些图处理会明显更慢、也更吃内存，建议一次别放太多。', 'warn');
+  } else hideMsg('bigmsg');
+}
+
+/* ===================== 缩略图列表 ===================== */
+function renderThumbs(){
+  var box = $('thumbs');
+  var html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    html += '<div class="thumb' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '">'
+          +   '<img src="' + it.thumb + '" alt="">'
+          +   '<span class="no">' + (i + 1) + '</span>'
+          +   (it.big ? '<span class="big">大图</span>' : '')
+          +   (it.status ? '<span class="st">' + it.status + '</span>' : '')
+          +   '<button type="button" class="x" data-del="' + it.id + '" title="移除这张">×</button>'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+// 只更新某一张的状态角标，避免每处理一张就重建整个列表（几十张时会明显变慢）
+function setThumbStatus(it){
+  var el = $('thumbs').querySelector('.thumb[data-id="' + it.id + '"]');
+  if(!el) return;
+  var st = el.querySelector('.st');
+  if(!it.status){
+    if(st && st.parentNode) st.parentNode.removeChild(st);
+    return;
+  }
+  if(!st){
+    st = document.createElement('span');
+    st.className = 'st';
+    el.appendChild(st);
+  }
+  st.textContent = it.status;
+}
+
+/* ===================== 分段按钮 ===================== */
+function bindSeg(id, onPick){
+  var box = $(id);
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || busy) return;
+    var kids = box.querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++) kids[i].classList.remove('on');
+    b.classList.add('on');
+    onPick(b.getAttribute('data-v'));
+  });
+}
+
+/* ===================== 参数读取 ===================== */
+function readOpts(){
+  return {
+    type: wmType,
+    tile: $('tile').checked,
+    pos: posVal,
+    margin: +$('margin').value,
+    text: $('wtext').value,
+    fontSize: +$('wsize').value,
+    textColor: $('wcolor').value,
+    textAlpha: +$('walpha').value / 100,
+    textRotate: +$('wrot').value,
+    stroke: $('wstroke').checked,
+    strokeW: +$('wstrokew').value,
+    strokeColor: $('wstrokec').value,
+    shadow: $('wshadow').checked,
+    shadowBlur: +$('wshblur').value,
+    shadowOff: +$('wshoff').value,
+    imgScale: +$('wmscale').value,
+    imgAlpha: +$('wmalpha').value / 100,
+    imgRotate: +$('wmrot').value
+  };
+}
+
+/* ===================== 水印绘制 ===================== */
+// W / H 是目标画布尺寸；所有尺寸都按短边百分比换算，所以原图与预览共用同一段逻辑。
+function drawWatermark(ctx, W, H, o, bmp){
+  var short = Math.min(W, H);
+  var rad = ((o.type === 'image' ? o.imgRotate : o.textRotate) * Math.PI) / 180;
+  var alpha = (o.type === 'image' ? o.imgAlpha : o.textAlpha);
+  var bw, bh, paint;
+
+  if(o.type === 'image'){
+    if(!bmp) return false;
+    var iw = bmp.width || 1, ih = bmp.height || 1;
+    bw = Math.max(4, short * o.imgScale / 100);
+    bh = bw * ih / iw;
+    paint = function(c){
+      c.save();
+      c.drawImage(bmp, -bw / 2, -bh / 2, bw, bh);
+      c.restore();
+    };
+  } else {
+    var text = o.text;
+    if(!text || !text.length) return false;
+    var fontPx = Math.max(6, short * o.fontSize / 100);
+    ctx.save();
+    ctx.font = '700 ' + fontPx.toFixed(2) + 'px ' + FONT_STACK;
+    bw = ctx.measureText(text).width;
+    ctx.restore();
+    if(!isFinite(bw) || bw <= 0) return false;
+    bh = fontPx * 1.25;
+    var strokePx = o.stroke ? Math.max(1, fontPx * o.strokeW / 100) : 0;
+    var blur = o.shadow ? Math.max(0, fontPx * o.shadowBlur / 100) : 0;
+    var off = o.shadow ? fontPx * o.shadowOff / 100 : 0;
+    paint = function(c){
+      c.save();
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.font = '700 ' + fontPx.toFixed(2) + 'px ' + FONT_STACK;
+      if(o.shadow){
+        c.shadowColor = 'rgba(0,0,0,0.55)';
+        c.shadowBlur = blur;
+        c.shadowOffsetX = off;
+        c.shadowOffsetY = off;
+      }
+      if(strokePx > 0){
+        c.lineJoin = 'round';
+        c.miterLimit = 2;
+        c.lineWidth = strokePx;
+        c.strokeStyle = o.strokeColor;
+        c.strokeText(text, 0, 0);
+      }
+      c.shadowColor = 'rgba(0,0,0,0)';
+      c.shadowBlur = 0;
+      c.shadowOffsetX = 0;
+      c.shadowOffsetY = 0;
+      c.fillStyle = o.textColor;
+      c.fillText(text, 0, 0);
+      c.restore();
+    };
+  }
+
+  ctx.save();
+  ctx.globalAlpha = Math.max(0.01, Math.min(1, alpha));
+  if(o.tile){
+    // 平铺：把坐标系转到画布中心并按水印角度旋转，再铺满整个对角线范围
+    var diag = Math.sqrt(W * W + H * H);
+    var stepX = bw + Math.max(bw * 0.55, bh * 0.4);
+    var stepY = bh + Math.max(bh * 0.85, bh * 0.5);
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(rad);
+    var half = diag / 2;
+    for(var y = -half; y <= half + stepY; y += stepY){
+      for(var x = -half; x <= half + stepX; x += stepX){
+        ctx.save();
+        ctx.translate(x, y);
+        paint(ctx);
+        ctx.restore();
+      }
+    }
+  } else {
+    var m = short * o.margin / 100;
+    var col = o.pos.charAt(1) === 'l' ? 0 : (o.pos.charAt(1) === 'r' ? 2 : 1);
+    var row = o.pos.charAt(0) === 't' ? 0 : (o.pos.charAt(0) === 'b' ? 2 : 1);
+    var bx = col === 0 ? m : (col === 2 ? W - bw - m : (W - bw) / 2);
+    var by = row === 0 ? m : (row === 2 ? H - bh - m : (H - bh) / 2);
+    ctx.translate(bx + bw / 2, by + bh / 2);
+    ctx.rotate(rad);
+    paint(ctx);
+  }
+  ctx.restore();
+  return true;
+}
+
+/* ===================== 预览 ===================== */
+var rafId = 0;
+function scheduleRender(){
+  if(rafId) return;
+  rafId = requestAnimationFrame(function(){ rafId = 0; renderPreview(); });
+}
+function selectItem(id){
+  selId = id;
+  renderThumbs();
+  refreshAll();
+  loadPreviewSrc(id);
+}
+function loadPreviewSrc(id){
+  var token = ++pvToken;
+  var it = byId(id);
+  if(!it){ previewSrc = null; renderPreview(); return; }
+  $('pvph').textContent = '正在载入预览…';
+  $('pvph').classList.remove('hidden');
+  $('pv').classList.add('hidden');
+  decodeFile(it.file).then(function(bmp){
+    if(token !== pvToken){ releaseBmp(bmp); return; }
+    var s = Math.min(1, PREVIEW_SIDE / Math.max(bmp.width, bmp.height));
+    var c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(bmp.width * s));
+    c.height = Math.max(1, Math.round(bmp.height * s));
+    var cx = c.getContext('2d');
+    cx.imageSmoothingQuality = 'high';
+    cx.drawImage(bmp, 0, 0, c.width, c.height);
+    releaseBmp(bmp);
+    previewSrc = c;
+    renderPreview();
+  }).catch(function(){
+    if(token !== pvToken) return;
+    previewSrc = null;
+    $('pvph').classList.remove('hidden');
+    $('pv').classList.add('hidden');
+    $('pvph').textContent = '这张图片读不出来（可能已损坏）';
+  });
+}
+function renderPreview(){
+  var cv = $('pv'), ph = $('pvph'), box = $('pvbox'), ctx = cv.getContext('2d');
+  var idx = selIndex();
+  $('pvindex').innerHTML = items.length ? ('第 <b>' + (idx + 1) + '</b> / 共 <b>' + items.length + '</b> 张') : '第 0 / 共 0 张';
+  if(!items.length || !previewSrc){
+    cv.classList.add('hidden');
+    ph.classList.remove('hidden');
+    if(!items.length) ph.innerHTML = '还没有选图片<br>先在第一步选择要加水印的图片';
+    $('pvinfo').innerHTML = '';
+    return;
+  }
+  ph.classList.add('hidden');
+  cv.classList.remove('hidden');
+
+  var maxW = Math.max(120, box.clientWidth - 20);
+  var maxH = Math.max(150, Math.min(520, Math.round(window.innerHeight * 0.52)));
+  var s = Math.min(maxW / previewSrc.width, maxH / previewSrc.height, 1);
+  var w = Math.max(1, Math.round(previewSrc.width * s));
+  var h = Math.max(1, Math.round(previewSrc.height * s));
+  var dpr = Math.min(2, window.devicePixelRatio || 1);
+
+  cv.width = Math.round(w * dpr);
+  cv.height = Math.round(h * dpr);
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.drawImage(previewSrc, 0, 0, w, h);
+
+  var o = readOpts();
+  var drew = drawWatermark(ctx, w, h, o, wmBitmap);
+
+  var it = items[idx];
+  var info = [];
+  if(it) info.push('原图 ' + it.w + ' × ' + it.h + ' 像素');
+  info.push('预览 ' + w + ' × ' + h);
+  if(!drew){
+    info.push(o.type === 'text' ? '水印文字是空的，写上字才会显示' : '还没有选水印图片');
+  }
+  if(it && it.big) info.push('属于大图，导出会慢一些');
+  $('pvinfo').innerHTML = info.join(' ｜ ');
+  cv.classList.remove('hidden');
+}
+
+/* ===================== 按钮状态 ===================== */
+function syncButtons(){
+  var n = items.length;
+  var ready = n > 0 && !busy;
+  $('clear').disabled = !n || busy;
+  $('file').disabled = busy;
+  $('runAll').disabled = !ready;
+  $('runOne').disabled = !ready || selIndex() < 0;
+  $('prev').disabled = !ready || selIndex() <= 0;
+  $('next').disabled = !ready || selIndex() < 0 || selIndex() >= n - 1;
+  $('cancel').classList.toggle('hidden', !busy);
+  $('wmPick').disabled = busy;
+}
+function refreshAll(){ updateCount(); renderPreview(); }
+
+/* ===================== 进度 ===================== */
+function setProgress(ratio, text){
+  $('bar').style.width = Math.round(Math.max(0, Math.min(1, ratio)) * 100) + '%';
+  $('pstat').textContent = text;
+}
+
+/* ===================== 单张处理 ===================== */
+function canvasToBlob(c, type, q){
+  return new Promise(function(res, rej){
+    if(!c.toBlob){ rej(new Error('这个浏览器不支持导出图片')); return; }
+    c.toBlob(function(b){ b ? res(b) : rej(new Error('导出失败')); }, type, q);
+  });
+}
+function pickType(it, fmt){
+  if(fmt === 'jpeg') return { type:'image/jpeg', ext:'jpg' };
+  if(fmt === 'png') return { type:'image/png', ext:'png' };
+  if(it.ext === 'png') return { type:'image/png', ext:'png' };
+  if(it.ext === 'webp') return { type:'image/webp', ext:'webp' };
+  return { type:'image/jpeg', ext:'jpg' };
+}
+function processOne(it, o, fmt, quality){
+  var bmpRef = null, cvRef = null;
+  return decodeFile(it.file).then(function(bmp){
+    bmpRef = bmp;
+    var W = bmp.width, H = bmp.height;
+    var p = pickType(it, fmt);
+    var c = document.createElement('canvas');
+    cvRef = c;
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+    ctx.imageSmoothingQuality = 'high';
+    if(p.type === 'image/jpeg'){
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, W, H);
+    }
+    ctx.drawImage(bmp, 0, 0, W, H);
+    releaseBmp(bmp);
+    bmpRef = null;
+    drawWatermark(ctx, W, H, o, wmBitmap);
+    var q = (p.type === 'image/jpeg') ? quality : undefined;
+    return canvasToBlob(c, p.type, q).then(function(blob){
+      releaseCanvas(c);
+      cvRef = null;
+      var actual = blob.type || p.type;
+      var ext = p.ext;
+      if(actual !== p.type){
+        ext = actual === 'image/png' ? 'png' : (actual === 'image/webp' ? 'webp' : 'jpg');
+      }
+      return blob.arrayBuffer().then(function(buf){
+        return { name: it.base + ($('suffix').value || '') + '.' + ext, data: new Uint8Array(buf), ext: ext };
+      });
+    });
+  }).catch(function(err){
+    releaseBmp(bmpRef);
+    releaseCanvas(cvRef);
+    throw err;
+  });
+}
+function uniqueName(name, used){
+  if(!used[name]){ used[name] = true; return name; }
+  var dot = name.lastIndexOf('.');
+  var base = dot > 0 ? name.slice(0, dot) : name;
+  var ext = dot > 0 ? name.slice(dot) : '';
+  var i = 2, cand;
+  do { cand = base + '_' + i + ext; i++; } while(used[cand]);
+  used[cand] = true;
+  return cand;
+}
+function downloadBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){
+    if(a.parentNode) a.parentNode.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 5000);
+}
+
+/* ===================== 批量导出 ===================== */
+function checkReady(){
+  var o = readOpts();
+  if(!items.length){ flash('请先在第 1 步选择图片。', 'err'); return null; }
+  if(o.type === 'text' && !o.text.replace(/\s/g, '').length){
+    flash('水印文字还是空的，先写上要加的字（也可以切到「图片水印」）。', 'err');
+    return null;
+  }
+  if(o.type === 'image' && !wmBitmap){ flash('请先选一张水印图片。', 'err'); return null; }
+  return o;
+}
+function runAll(){
+  if(busy) return;
+  var o = checkReady();
+  if(!o) return;
+  var quality = (+$('quality').value) / 100;
+  var fmt = outFmt;
+  var used = {};
+  var files = [];
+  var failed = [];
+  var total = items.length;
+  var t0 = Date.now();
+  busy = true; cancelFlag = false; syncButtons();
+  hideMsg('emsg');
+  for(var k = 0; k < items.length; k++) items[k].status = '';
+  renderThumbs();
+
+  var i = 0;
+  function loop(){
+    if(cancelFlag || i >= total){
+      finish();
+      return;
+    }
+    var it = items[i];
+    var idxNow = i;
+    setProgress(idxNow / total, '正在处理第 ' + (idxNow + 1) + ' / ' + total + ' 张：' + it.name);
+    processOne(it, o, fmt, quality).then(function(res){
+      res.name = uniqueName(res.name, used);
+      files.push({ name: res.name, data: res.data });
+      it.status = '已处理 ' + fmtSize(res.data.length);
+      i++;
+      setThumbStatus(it);
+      setProgress(i / total, '正在处理第 ' + Math.min(i + 1, total) + ' / ' + total + ' 张…');
+      setTimeout(loop, 0);
+    }).catch(function(){
+      failed.push(it.name);
+      it.status = '处理失败';
+      i++;
+      setThumbStatus(it);
+      setTimeout(loop, 0);
+    });
+  }
+  function finish(){
+    var cancelled = cancelFlag;
+    busy = false; cancelFlag = false; syncButtons();
+    if(!files.length){
+      setProgress(0, '没有生成任何文件。');
+      showMsg('emsg', 'emsgtxt', '没有生成文件：可能全部处理失败，或者你取消了。', 'err');
+      return;
+    }
+    setProgress(1, '正在打包 ZIP（' + files.length + ' 张）…');
+    var totalBytes = 0;
+    for(var k = 0; k < files.length; k++) totalBytes += files[k].data.length;
+    if(totalBytes > MAX_ZIP_BYTES){
+      setProgress(0, '文件总量过大，没有打包。');
+      showMsg('emsg', 'emsgtxt', '这些图加起来有 ' + fmtSize(totalBytes) + '，太大了一次打包会很吃内存。建议分成几批处理，或者改用「统一 JPG」+ 调低质量。', 'err');
+      files.length = 0;
+      return;
+    }
+    setTimeout(function(){
+      var blob = buildZip(files);
+      var zipName = 'watermarked_' + stamp() + '.zip';
+      downloadBlob(blob, zipName);
+      var secs = ((Date.now() - t0) / 1000).toFixed(1);
+      var msg = (cancelled ? '已取消（下面是取消前处理好的 ' + files.length + ' 张）：' : '全部完成：')
+              + '共 ' + files.length + ' 张，打包成 ' + zipName + '，用时 ' + secs + ' 秒，ZIP 体积 ' + fmtSize(blob.size) + '。';
+      if(failed.length) msg += ' 有 ' + failed.length + ' 张失败：' + failed.slice(0, 5).join('、') + (failed.length > 5 ? ' 等' : '') + '。';
+      showMsg('emsg', 'emsgtxt', msg, failed.length ? 'warn' : 'ok');
+      setProgress(0, '打包完成，浏览器应该已经开始下载了。');
+      files.length = 0;
+      files = null;
+    }, 30);
+  }
+  loop();
+}
+function runOne(){
+  if(busy) return;
+  var o = checkReady();
+  if(!o) return;
+  var idx = selIndex();
+  if(idx < 0){ flash('先在缩略图里点一张要下载的图。', 'err'); return; }
+  var it = items[idx];
+  busy = true; syncButtons();
+  setProgress(0.15, '正在处理：' + it.name);
+  processOne(it, o, outFmt, (+$('quality').value) / 100).then(function(res){
+    busy = false; syncButtons();
+    it.status = '已处理 ' + fmtSize(res.data.length);
+    renderThumbs();
+    var blob = new Blob([res.data], { type:'application/octet-stream' });
+    downloadBlob(blob, res.name);
+    setProgress(1, '已下载：' + res.name);
+    flash('已下载这一张：' + res.name, 'ok');
+    res.data = null;
+  }).catch(function(err){
+    busy = false; syncButtons();
+    setProgress(0, '处理失败。');
+    flash('这一张处理失败了：' + (err && err.message ? err.message : '未知原因'), 'err');
+  });
+}
+function stamp(){
+  var d = new Date();
+  return '' + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + '_' + pad2(d.getHours()) + pad2(d.getMinutes());
+}
+
+/* =====================================================================
+   ZIP 打包（store 模式，无压缩）—— 自己实现，不依赖任何第三方库
+   结构：每个文件 = 本地文件头 + 文件名 + 原始数据；最后是中央目录 + EOCD
+   文件名走 UTF-8（通用位标记 0x0800），所以中文文件名也正常
+   ===================================================================== */
+/* ==== ZIP-ENGINE-START ==== */
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for(var n = 0; n < 256; n++){
+    var c = n;
+    for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  var c = 0xFFFFFFFF;
+  for(var i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files){
+  var enc = new TextEncoder();
+  var now = new Date();
+  var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  var parts = [], central = [];
+  var offset = 0;
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var nameBytes = enc.encode(f.name);
+    var crc = crc32(f.data);
+    var size = f.data.length;
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);
+    lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true);
+    lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameBytes.length, true);
+    lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint16(30, 0, true);
+    ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true);
+    ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+    offset += 30 + nameBytes.length + size;
+  }
+  var cdSize = 0;
+  for(var j = 0; j < central.length; j++) cdSize += central[j].length;
+  var eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(4, 0, true);
+  eocd.setUint16(6, 0, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  eocd.setUint16(20, 0, true);
+  var all = parts.concat(central);
+  all.push(new Uint8Array(eocd.buffer));
+  return new Blob(all, { type: 'application/zip' });
+}
+/* ==== ZIP-ENGINE-END ==== */
+
+/* ===================== 界面绑定 ===================== */
+function bindRanges(){
+  var list = document.querySelectorAll('input[type=range]');
+  for(var i = 0; i < list.length; i++){
+    (function(el){
+      var out = $(el.id + '-v');
+      var unit = el.getAttribute('data-unit') || '';
+      function show(){ if(out) out.textContent = el.value + unit; }
+      el.addEventListener('input', function(){ show(); scheduleRender(); });
+      show();
+    })(list[i]);
+  }
+  var colors = document.querySelectorAll('input[type=color]');
+  for(var j = 0; j < colors.length; j++){
+    (function(el){
+      var out = $(el.id + '-v');
+      function show(){ if(out) out.textContent = colorName(el.value); }
+      el.addEventListener('input', function(){ show(); scheduleRender(); });
+      show();
+    })(colors[j]);
+  }
+}
+function bindAll(){
+  var drop = $('drop'), file = $('file');
+  drop.addEventListener('click', function(){ if(!busy) file.click(); });
+  file.addEventListener('change', function(){ addFiles(file.files); file.value = ''; });
+  ['dragenter', 'dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); e.stopPropagation(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(busy) return;
+    var dt = e.dataTransfer;
+    if(dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+  window.addEventListener('dragover', function(e){ e.preventDefault(); });
+  window.addEventListener('drop', function(e){ e.preventDefault(); });
+
+  $('thumbs').addEventListener('click', function(e){
+    var del = e.target.closest('[data-del]');
+    if(del){ e.stopPropagation(); if(!busy) removeItem(+del.getAttribute('data-del')); return; }
+    var t = e.target.closest('.thumb');
+    if(t && !busy) selectItem(+t.getAttribute('data-id'));
+  });
+  $('clear').addEventListener('click', function(){ if(!busy && items.length) clearAll(); });
+
+  bindSeg('segType', function(v){
+    wmType = v;
+    $('panelText').classList.toggle('hidden', v !== 'text');
+    $('panelImage').classList.toggle('hidden', v !== 'image');
+    scheduleRender();
+  });
+  bindSeg('segFmt', function(v){ outFmt = v; scheduleRender(); });
+
+  $('pad').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || busy) return;
+    var kids = $('pad').querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++) kids[i].classList.remove('on');
+    b.classList.add('on');
+    posVal = b.getAttribute('data-v');
+    scheduleRender();
+  });
+
+  $('wtext').addEventListener('input', scheduleRender);
+  $('suffix').addEventListener('input', function(){
+    var s = $('suffix').value;
+    var nm = items.length ? (items[selIndex() >= 0 ? selIndex() : 0].base + s + '.' + (items[selIndex() >= 0 ? selIndex() : 0].ext === 'png' ? 'png' : (items[selIndex() >= 0 ? selIndex() : 0].ext === 'webp' ? 'webp' : 'jpg'))) : ('照片' + s + '.jpg');
+    $('suffixHint').innerHTML = '例如原图 <b>照片.jpg</b> → 输出 <b>' + nm + '</b>；后缀可以改成你自己喜欢的。';
+  });
+
+  $('wstroke').addEventListener('change', function(){
+    $('strokeOpts').classList.toggle('hidden', !this.checked);
+    scheduleRender();
+  });
+  $('wshadow').addEventListener('change', function(){
+    $('shadowOpts').classList.toggle('hidden', !this.checked);
+    scheduleRender();
+  });
+  $('tile').addEventListener('change', function(){
+    $('pad').classList.toggle('dis', this.checked);
+    scheduleRender();
+  });
+
+  var simple = ['wcolor', 'wstrokec', 'wstrokew', 'wshblur', 'wshoff', 'wsize', 'walpha', 'wrot',
+                'margin', 'wmscale', 'wmalpha', 'wmrot', 'quality'];
+  for(var i = 0; i < simple.length; i++){
+    var el = $(simple[i]);
+    if(!el) continue;
+    el.addEventListener('input', scheduleRender);
+    el.addEventListener('change', scheduleRender);
+  }
+
+  $('wmPick').addEventListener('click', function(){ if(!busy) $('wmFile').click(); });
+  $('wmFile').addEventListener('change', function(){
+    var f = this.files && this.files[0];
+    this.value = '';
+    if(!f) return;
+    decodeFile(f).then(function(bmp){
+      releaseBmp(wmBitmap);
+      wmBitmap = bmp;
+      wmName = f.name;
+      $('wmBox').classList.remove('hidden');
+      $('wmName').textContent = wmName + '（' + bmp.width + ' × ' + bmp.height + '）';
+      var c = document.createElement('canvas');
+      var s = Math.min(1, 96 / Math.max(bmp.width, bmp.height));
+      c.width = Math.max(1, Math.round(bmp.width * s));
+      c.height = Math.max(1, Math.round(bmp.height * s));
+      c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+      $('wmPrev').src = c.toDataURL('image/png');
+      releaseCanvas(c);
+      scheduleRender();
+    }).catch(function(){
+      flash('这张水印图片读不出来，换一张试试。', 'err');
+    });
+  });
+
+  $('prev').addEventListener('click', function(){
+    var i = selIndex();
+    if(i > 0 && !busy) selectItem(items[i - 1].id);
+  });
+  $('next').addEventListener('click', function(){
+    var i = selIndex();
+    if(i >= 0 && i < items.length - 1 && !busy) selectItem(items[i + 1].id);
+  });
+
+  $('runAll').addEventListener('click', runAll);
+  $('runOne').addEventListener('click', runOne);
+  $('cancel').addEventListener('click', function(){
+    if(!busy) return;
+    cancelFlag = true;
+    setProgress(0, '正在取消…（当前这张处理完就停）');
+  });
+
+  var dis = document.querySelectorAll('[data-dismiss]');
+  for(var d = 0; d < dis.length; d++){
+    (function(b){ b.addEventListener('click', function(){ hideMsg(b.getAttribute('data-dismiss')); }); })(dis[d]);
+  }
+
+  window.addEventListener('resize', function(){ scheduleRender(); });
+  document.addEventListener('keydown', function(e){
+    if(busy || !items.length) return;
+    if(e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+    if(e.key === 'ArrowLeft') $('prev').click();
+    if(e.key === 'ArrowRight') $('next').click();
+  });
+  window.addEventListener('beforeunload', function(e){
+    if(busy){ e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+/* ===================== 启动 ===================== */
+bindRanges();
+bindAll();
+renderThumbs();
+updateCount();
+refreshAll();
+setProgress(0, '还没有开始处理。');
+})();
+</script>
+<!-- SITE-INJECT-START -->
+<link rel="icon" href="../favicon.ico">
+<link rel="apple-touch-icon" href="../favicon.ico">
+<style>
+#site-back{position:fixed;left:14px;bottom:14px;z-index:2147483000;
+  display:inline-flex;align-items:center;gap:8px;
+  font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  opacity:.92;transition:opacity .15s}
+#site-back:hover{opacity:1}
+#site-back .site-home{display:inline-flex;align-items:center;color:#22243a;
+  background:rgba(255,255,255,.94);border:1px solid #e4e6ef;border-radius:999px;
+  padding:9px 14px;text-decoration:none;box-shadow:0 4px 14px rgba(34,36,58,.14);
+  transition:transform .15s}
+#site-back .site-home:hover{transform:translateY(-1px)}
+#site-back .site-chips{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+#site-back .site-chips::before{content:"相关";color:#7a7d94;font-size:12px;font-weight:600}
+#site-back .site-chip{color:#1d9e75;background:rgba(255,255,255,.92);border:1px solid #cfe9df;
+  border-radius:999px;padding:7px 12px;text-decoration:none;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(34,36,58,.10);transition:background .15s,transform .15s}
+#site-back .site-chip:hover{background:#eefaf5;transform:translateY(-1px)}
+@media (max-width:560px){
+  #site-back{left:10px;bottom:10px;gap:6px;flex-wrap:wrap;max-width:calc(100% - 20px)}
+  #site-back .site-home{padding:8px 12px;font-size:12px}
+  #site-back .site-chips{gap:4px}
+  #site-back .site-chips::before{display:none}
+  #site-back .site-chip{padding:6px 10px;font-size:12px}
+}
+</style>
+<span id="site-back"><a class="site-home" href="../index.html" title="回到工具箱">← 工具箱</a><span class="site-chips"><a class="site-chip" href="./img-batch.html">图片批处理</a><a class="site-chip" href="./img-compress.html">图片压缩</a></span></span>
+<!-- SITE-INJECT-END -->
+</body>
+</html>

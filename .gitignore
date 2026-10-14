@@ -5,3 +5,10 @@
 !/README.md
 !/LICENSE
 !/.gitignore
+
+# 内部文档：本地要留，但不公开
+# ⚠️ 这几条必须放在上面的反向放行之后 —— git 是「最后匹配的规则生效」
+/个人站/tools/README.md
+/个人站/images/README.md
+/_deploy/DEPLOY.md
+

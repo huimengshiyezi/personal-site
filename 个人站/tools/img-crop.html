@@ -1,0 +1,1971 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>图片裁剪 · 纯本地处理 · 文件不上传</title>
+<meta name="description" content="批量裁剪图片：拖框裁剪、四周裁边、固定比例，一次处理一批，打包 ZIP 下载。全部在浏览器本地完成，文件不上传，断网可用。">
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --line:#e4e7f0; --text:#1f2340; --muted:#7c819a;
+  --brand:#3f6ef0; --brand2:#eaf1ff; --ok:#1f9d55; --warn:#b7791f; --err:#d64545;
+  --rs:10px; --rl:14px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  padding:14px;max-width:1180px;margin:0 auto;-webkit-text-size-adjust:100%}
+h1{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:11.5px;font-weight:400;color:var(--brand);background:var(--brand2);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.lead{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rl);padding:12px;margin-bottom:12px}
+.card h2{font-size:14.5px;margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 0;line-height:1.7}
+.hint b{color:var(--text)}
+.row2{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.row2>*{min-width:0}
+
+/* ---------- 选图 ---------- */
+.drop{border:2px dashed #c8cfe4;border-radius:var(--rl);padding:20px 14px;text-align:center;background:#fbfcff;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand2)}
+.drop .m1{font-size:14px}
+.drop .m2{font-size:12px;color:var(--muted);margin-top:5px}
+.drop input{display:none}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.thumb{position:relative;width:62px;height:62px;border-radius:9px;overflow:hidden;border:2px solid transparent;background:#eef1f8;cursor:pointer;flex:none}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb.on{border-color:var(--brand)}
+.thumb .x{position:absolute;top:0;right:0;width:17px;height:17px;border:0;border-radius:0 6px 0 8px;background:rgba(31,35,64,.72);color:#fff;font-size:11px;line-height:17px;padding:0;cursor:pointer}
+.thumb .st{position:absolute;left:0;right:0;bottom:0;font-size:10px;text-align:center;background:rgba(31,35,64,.72);color:#fff;line-height:15px;overflow:hidden;white-space:nowrap}
+.thumb .st.err{background:var(--err)}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- 控件 ---------- */
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:0 13px;height:34px;font:inherit;font-size:13px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--line);color:var(--text)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:#3560dd;color:#fff}
+.btn.ghost{background:#fff}
+.btn.sm{height:28px;font-size:12.5px;padding:0 10px}
+.field{display:flex;align-items:center;gap:9px;margin:8px 0;flex-wrap:wrap}
+.field>.k{font-size:12.5px;color:var(--muted);flex:none;min-width:66px}
+.field input[type=number],.field input[type=text]{border:1px solid var(--line);border-radius:8px;height:32px;padding:0 9px;font:inherit;font-size:13px;color:var(--text);background:#fff;min-width:0;flex:1;max-width:200px}
+.field input[type=color]{width:38px;height:30px;padding:1px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.field input[type=range]{flex:1;min-width:110px;accent-color:var(--brand);margin:0}
+.field .v{font-size:12.5px;color:var(--muted);min-width:38px;text-align:right;flex:none}
+.sub{border-top:1px solid var(--line);margin-top:10px;padding-top:9px}
+.sub>.t{font-size:12.5px;color:var(--muted);margin-bottom:2px}
+.seg{display:inline-flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:#fff;border-radius:8px;height:31px;padding:0 11px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.seg button:hover{border-color:var(--brand)}
+.seg button.on{background:var(--brand2);border-color:var(--brand);color:var(--brand);font-weight:600}
+.sw{display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;user-select:none}
+.sw input{width:17px;height:17px;accent-color:var(--brand);margin:0}
+.hidden{display:none !important}
+.spacer{flex:1}
+.in2{display:flex;gap:8px}
+.in2 label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.in2 input{width:74px;border:1px solid var(--line);border-radius:8px;height:30px;padding:0 8px;font:inherit;font-size:13px}
+.pill{font-size:12px;color:var(--muted);background:#f2f4fa;border-radius:999px;padding:2px 10px}
+.dim{opacity:.55}
+
+/* ---------- 裁剪编辑器 ---------- */
+/* 刻意不加 border-radius：圆角会把贴边时向外伸 7px 的手柄和白色框线切掉。
+   padding 8px 就是留给那 7px 的，保证框贴到画布边缘时手柄仍完整可见、好抓。
+   overflow:hidden 保留 —— 遮罩（box-shadow 9999px）靠它裁。 */
+.cropedit{position:relative;margin-top:10px;padding:8px;border:1px solid var(--line);overflow:hidden;background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;text-align:center;touch-action:none;user-select:none;-webkit-user-select:none}
+.cropedit canvas{display:block;margin:0 auto;max-width:100%;height:auto}
+.cropedit .cph{position:absolute;top:-8px;right:-8px;bottom:-8px;left:-8px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;padding:24px 14px;color:var(--muted);font-size:12.5px;line-height:1.8;background:rgba(255,255,255,.72)}
+.cbox{position:absolute;box-sizing:border-box;border:1.5px solid #fff;outline:1px solid rgba(31,35,64,.55);
+  box-shadow:0 0 0 9999px rgba(20,26,60,.45);cursor:move;touch-action:none}
+.cbox::before,.cbox::after{content:"";position:absolute;pointer-events:none;background:rgba(255,255,255,.55)}
+.cbox::before{left:33.333%;right:33.333%;top:0;bottom:0;width:1px}
+.cbox::after{top:33.333%;bottom:33.333%;left:0;right:0;height:1px}
+.cbox>i{position:absolute;width:14px;height:14px;background:#fff;border:1px solid rgba(31,35,64,.55);border-radius:3px}
+.cbox>i[data-h="nw"]{left:-7px;top:-7px;cursor:nwse-resize}
+.cbox>i[data-h="n"]{left:50%;top:-7px;margin-left:-7px;cursor:ns-resize}
+.cbox>i[data-h="ne"]{right:-7px;top:-7px;cursor:nesw-resize}
+.cbox>i[data-h="w"]{left:-7px;top:50%;margin-top:-7px;cursor:ew-resize}
+.cbox>i[data-h="e"]{right:-7px;top:50%;margin-top:-7px;cursor:ew-resize}
+.cbox>i[data-h="sw"]{left:-7px;bottom:-7px;cursor:nesw-resize}
+.cbox>i[data-h="s"]{left:50%;bottom:-7px;margin-left:-7px;cursor:ns-resize}
+.cbox>i[data-h="se"]{right:-7px;bottom:-7px;cursor:nwse-resize}
+.cbox.dis{display:none}
+
+/* ---------- 进度 / 结果 ---------- */
+.prog{height:7px;background:#e9ecf5;border-radius:999px;overflow:hidden;margin-top:9px}
+.prog>i{display:block;height:100%;width:0;background:var(--brand);transition:width .2s}
+.pstat{font-size:12.5px;color:var(--muted);margin-top:6px}
+.msg{margin-top:9px;border-radius:9px;padding:9px 11px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start;line-height:1.7}
+.msg.ok{background:#eefaf1;color:#15683a}
+.msg.warn{background:#fff8e8;color:#8a5b00}
+.msg.err{background:#fdeeee;color:#96201f}
+.msg .x{margin-left:auto;border:0;background:none;font-size:15px;cursor:pointer;color:inherit;padding:0 2px}
+.dash{background:#f8f9fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12.5px;color:var(--muted);margin-top:9px;line-height:1.8}
+.dash b{color:var(--text)}
+.list{margin-top:9px;max-height:190px;overflow:auto;border:1px solid var(--line);border-radius:10px}
+.list .row{display:flex;gap:8px;align-items:center;padding:6px 9px;font-size:12.5px;border-bottom:1px solid #f0f2f8}
+.list .row:last-child{border-bottom:0}
+.list .rn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list .rv{color:var(--muted);flex:none}
+.list .rv.more{color:var(--err)}
+.list .rv.less{color:var(--ok)}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:6px 0 22px}
+
+/* ---------- 手机 ---------- */
+@media (max-width:560px){
+  body{padding:9px}
+  h1{font-size:17px}
+  .field{flex-wrap:wrap}
+  .field>.k{min-width:56px}
+  .field input[type=number],.field input[type=text]{max-width:100%}
+  .seg button{height:29px;padding:0 9px;font-size:12px}
+  .btn{height:32px;padding:0 10px;font-size:12.5px}
+  .cropedit{padding:6px}
+}
+</style>
+</head>
+<body>
+
+<h1>图片裁剪 <span class="badge">纯本地处理 · 文件不上传 · 断网可用</span></h1>
+<p class="lead">把一批图片按同一个裁剪框裁好（也可以每张单独裁），处理完打包成一个 ZIP 下载。所有运算都在你自己的浏览器里完成，图片不会离开这台设备。</p>
+
+<!-- ① 选图片 -->
+<section class="card">
+  <h2>选图片 <span class="pill" id="count">还没有添加图片</span>
+    <span class="spacer"></span>
+    <button class="btn ghost sm" id="clear" disabled>清空全部</button>
+  </h2>
+  <div class="drop" id="drop">
+    <div class="m1">点击这里选择图片，或把图片直接拖进来</div>
+    <div class="m2">可以一次选很多张，也可以把文件夹里的图片一起选中拖进来；还支持直接按 Ctrl + V 粘贴截图</div>
+    <input type="file" id="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+  </div>
+  <div class="thumbs" id="thumbs"></div>
+  <div class="msg hidden" id="msg"><span id="msgtxt"></span><button class="x" data-dismiss="msg">×</button></div>
+</section>
+
+<!-- ② 裁剪 -->
+<section class="card">
+  <h2>裁剪
+    <span class="spacer"></span>
+    <label class="sw" title="打开后每张图各自记一个裁剪框，切图时各自恢复"><input type="checkbox" id="perItem"><span>每张图单独裁剪</span></label>
+  </h2>
+
+  <div class="seg" id="cropMode">
+    <button type="button" data-v="box" class="on">拖动裁剪框</button>
+    <button type="button" data-v="edge">四周各裁掉 N 像素</button>
+  </div>
+
+  <div id="cropBox">
+    <div class="field" style="margin-top:10px">
+      <span class="k">固定比例</span>
+      <div class="seg" id="cropRatio">
+        <button type="button" data-v="orig" class="on">原图比例</button>
+        <button type="button" data-v="1:1">1 : 1</button>
+        <button type="button" data-v="3:4">3 : 4</button>
+        <button type="button" data-v="4:3">4 : 3</button>
+        <button type="button" data-v="16:9">16 : 9</button>
+        <button type="button" data-v="9:16">9 : 16</button>
+        <button type="button" data-v="21:9">21 : 9</button>
+        <button type="button" data-v="custom">自定义</button>
+      </div>
+    </div>
+    <div class="field hidden" id="cropCustomWrap">
+      <span class="k">自定义比例</span>
+      <div class="in2">
+        <label><span>宽</span><input type="number" id="cropCw" min="1" max="9999" value="4"></label>
+        <label><span>高</span><input type="number" id="cropCh" min="1" max="9999" value="5"></label>
+      </div>
+    </div>
+
+    <div class="cropedit" id="cropedit">
+      <canvas id="cropcv"></canvas>
+      <div class="cbox" id="cropcbox">
+        <i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i>
+        <i data-h="w"></i><i data-h="e"></i>
+        <i data-h="sw"></i><i data-h="s"></i><i data-h="se"></i>
+      </div>
+      <div class="cph" id="cropph">选一张图片后，这里会出现可以拖动、可以拉伸的裁剪框</div>
+    </div>
+    <div class="bar" style="margin-top:8px">
+      <span class="hint" style="margin:0" id="cropInfo">拖动框内 = 移动；拖 8 个小方块 = 缩放。</span>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" id="cropCenter" type="button">居中</button>
+      <button class="btn ghost sm" id="cropReset" type="button">重置</button>
+      <button class="btn ghost sm" id="cropUseAll" type="button">覆盖全部</button>
+    </div>
+  </div>
+
+  <div id="cropEdge" class="hidden">
+    <div class="field" style="margin-top:10px"><span class="k">裁掉多少</span><input type="range" id="cropEdgePx" min="0" max="30" step="1" value="2" data-unit="%"><span class="v" id="cropEdgePx-v">2%</span></div>
+    <div class="field"><span class="k">或填像素</span><input type="number" id="cropEdgeNum" min="0" max="99999" value="0" step="1"><span class="hint" style="margin:0">像素（填 0 表示用上面那个百分比）</span></div>
+    <p class="hint">四周均匀裁掉一圈，适合去掉截图边框、水印边角、扫描件黑边。填「0」就用上面的百分比（按图片短边算）。</p>
+  </div>
+
+  <p class="hint" id="perItemHint"></p>
+</section>
+
+<!-- ③ 输出 -->
+<section class="card">
+  <h2>输出格式与质量</h2>
+  <div class="field">
+    <span class="k">目标格式</span>
+    <div class="seg" id="outFmt">
+      <button type="button" data-v="keep" class="on">保持原格式</button>
+      <button type="button" data-v="jpeg">JPG</button>
+      <button type="button" data-v="png">PNG</button>
+      <button type="button" data-v="webp">WebP</button>
+    </div>
+  </div>
+  <div class="field" id="outQWrap"><span class="k">画质</span><input type="range" id="outQ" min="40" max="100" step="1" value="92"><span class="v" id="outQ-v">92</span></div>
+  <p class="hint" id="outQHint">画质只对 JPG / WebP 生效，数字越高越清楚、文件越大。40 ~ 100。</p>
+  <div class="sub">
+    <p class="hint" id="lossHint"></p>
+  </div>
+  <div class="field"><span class="k">文件名后缀</span><input type="text" id="suffix" value="_crop" placeholder="_crop" maxlength="24"></div>
+  <p class="hint" id="suffixHint"></p>
+</section>
+
+<!-- ④ 导出 -->
+<section class="card">
+  <h2>导出 <span class="pill">一张一张按顺序处理</span></h2>
+  <div class="bar">
+    <button class="btn primary" id="runAll" disabled>一键处理全部 → 打包下载 ZIP</button>
+    <button class="btn ghost" id="runOne" disabled>只下载当前这张</button>
+    <button class="btn ghost hidden" id="cancel">取消</button>
+    <button class="btn ghost" id="resetAll" title="恢复出厂设置并清除本机记住的设置">恢复默认</button>
+  </div>
+  <div class="prog"><i id="bar"></i></div>
+  <div class="pstat" id="pstat">还没有开始处理。</div>
+  <div class="msg hidden" id="emsg"><span id="emsgtxt"></span><button class="x" data-dismiss="emsg">×</button></div>
+  <div class="dash" id="summary">批量处理结束后，这里会显示：总张数、成功 / 失败数，以及处理前 → 处理后的总体积变化（省了百分之多少）。</div>
+  <div class="list hidden" id="list"></div>
+</section>
+
+<footer>纯本地处理 · 文件不上传 · 断网可用 ｜ 裁剪是像素级搬运、不重采样</footer>
+
+<script>
+(function(){
+'use strict';
+
+/* ==== PURE-CORE-START ==== */
+/* 纯计算区：不碰 DOM、不碰浏览器 API，可以整段抽到 Node 的 vm 里跑单测。
+   全部用 var / function 声明，末尾统一挂到 globalThis 上给自检脚本用。 */
+function extOf(name){ var m = /\.([a-z0-9]+)$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+
+/* ---------- 数值与尺寸换算（extOf 在上面，同属 PURE-CORE 段） ---------- */
+function clampNum(v, lo, hi){
+  v = Number(v);
+  if(!isFinite(v)) v = lo;
+  return Math.min(hi, Math.max(lo, v));
+}
+function parseInt10(s, d){
+  var v = parseInt(s, 10);
+  return isFinite(v) ? v : d;
+}
+
+/* ---------- ① 裁剪：算出实际要抠的那块矩形 ---------- */
+/* 裁剪框（伸缩框）用**归一化坐标**存：box = {x,y,w,h}，都是 0~1，相对整张图。
+   这样它在预览画布与导出原图上算出来的**相对位置完全一致**，
+   也就不会出现「预览按 1000px 算、导出按 3376px 算」那种两套尺度打架的问题。 */
+/* 归一化框 → 像素矩形。越界时的处理：**优先保住尺寸，把框挪回画面内**
+   （跟拖拽时 moveBox 的行为一致，避免「存进去的框」和「屏幕上看到的框」不一样）。 */
+/* 归一化框 → 像素矩形。
+   ⚠️ 这里的下限**不能写死成归一化的 0.02**：0.02 在 3000 像素宽的图上是 60 像素，
+   会把一个本来很小的框硬撑大；而只撑一个方向就会把比例夹歪
+   （真机上出现过 38×22 / 50×22 这种"看着差不多其实不成比例"的结果）。
+   改成"至少 2 像素"：1280 宽以内与原来的 0.02 基本等价，大图上则不会乱夹。
+   ratio > 0（固定比例）时下限收紧到 2 像素；否则保持 0.02 的老口径。 */
+function normToRect(box, W, H, ratio){
+  W = Math.max(1, Math.round(W)); H = Math.max(1, Math.round(H));
+  var minw = (ratio > 0) ? Math.min(1, 2 / W) : 0.02;
+  var minh = (ratio > 0) ? Math.min(1, 2 / H) : 0.02;
+  var x = clampNum(box && box.x, 0, 1), y = clampNum(box && box.y, 0, 1);
+  var w = clampNum(box && box.w, minw, 1), h = clampNum(box && box.h, minh, 1);
+  var rw = Math.max(1, Math.min(W, Math.round(w * W)));
+  var rh = Math.max(1, Math.min(H, Math.round(h * H)));
+  var rx = Math.max(0, Math.min(W - rw, Math.round(x * W)));
+  var ry = Math.max(0, Math.min(H - rh, Math.round(y * H)));
+  return { x: rx, y: ry, w: rw, h: rh };
+}
+function rectToNorm(r, W, H){
+  W = Math.max(1, W); H = Math.max(1, H);
+  return { x: r.x / W, y: r.y / H, w: r.w / W, h: r.h / H };
+}
+/* 固定比例下"框的像素宽度"的地板（下限）。
+   为什么要它：归一化宽高的下限是 0.02，而框宽 w 与高 h 满足 h = w/ratio，
+   所以 h 也必须 ≥ 0.02×画面的高，否则下游把归一化值夹回 0.02 时就把比例夹歪了
+   （真机上在 1920×1080 上出现过 38×22 这种"看着差不多、其实不成比例"的结果）。
+   ⚠️ 还要留 1 像素余量：h 会向上取整，2% 正好卡在整数边界时要再抬一像素。
+   needW / needH 是"本图与参考画布各自的 2%像素"里的较大者。 */
+function minRatioWidth(ratio, needW, needH){
+  if(!(ratio > 0)) return 1;
+  return Math.max(1, Math.round(Math.max(needW, (needH + 1) * ratio)));
+}
+/* 求「符合目标比例的最大像素尺寸」。只在归一化空间乘除会留下四舍五入误差
+   （用户会把固定比例当"精确比例"用），所以这里直接解出满足 w/h = ratio 的整数候选。
+   ⚠️ 这是**最大**尺寸，只用于「初始化 / 重置 / 比例切换」；
+   拖拽缩放时要保住用户拉的尺寸，用下面的 lockBoxToRatio。 */
+function maxRatioSize(ratio, W, H){
+  W = Math.max(1, W); H = Math.max(1, H);
+  if(!(ratio > 0)) return { w: W, h: H };
+  var maxW = Math.min(W, H * ratio);
+  var best = null;
+  var cand = [
+    { w: Math.round(maxW), h: Math.round(Math.round(maxW) / ratio) },
+    { w: Math.floor(maxW), h: Math.round(Math.floor(maxW) / ratio) }
+  ];
+  for(var i = 0; i < cand.length; i++){
+    var cw = Math.max(1, cand[i].w), ch = Math.max(1, cand[i].h);
+    if(cw > W || ch > H) continue;
+    if(Math.round(cw / ratio) !== ch) continue;        // 严格校验：必须精确成比例
+    if(!best || cw * ch > best.w * best.h) best = { w: cw, h: ch };
+  }
+  if(!best){
+    // 兜底也要守住比例：左对齐宽度 → 反推高度 → 再按画面收一遍
+    var fw = Math.max(1, Math.min(W, Math.round(maxW)));
+    var fh = Math.max(1, Math.min(H, Math.round(fw / ratio)));
+    fw = Math.max(1, Math.min(W, Math.round(fh * ratio)));
+    best = { w: fw, h: fh };
+  }
+  return best;
+}
+/* 把归一化盒子按目标比例**贴合到最大**（以当前中心为基准，整框留在画面内）。
+   ratio<=0 表示「不锁比例，只做边界夹紧」。 */
+function fitBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    b.x = Math.max(0, Math.min(1 - b.w, b.x));
+    b.y = Math.max(0, Math.min(1 - b.h, b.y));
+    return b;
+  }
+  var best = maxRatioSize(ratio, W, H);
+  var out = withBoxSize(b, best.w / W, best.h / H);
+  out.frac = 1;                        // 「这张图的同比例最大块」= 100%，换图时按它等比缩放
+  return out;
+}
+/* 按目标比例**锁住当前尺寸**（拖拽 / 换图时用；不能弹回最大值）。
+   ★ 尺子只认 box.frac（「占这张图同比例最大块的多少」），**不要**从归一化宽高反推：
+     归一化宽高是「跟图片比例相关」的，换了一张图之后再反推出来的 frac 是错的
+     —— 800×600 上的最大 1:1 框 w=0.75，套到 600×1000 上反推成 0.75（正确是 1），
+       正好就是"界面说 600×600、导出却 450×450"的根因。
+   frac 缺失时才退化成按当前图估一个。 */
+function lockBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  carryBoxMeta(box, b);                    // frac / pxW / refW 跟着走，别在中途丢
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    // 不锁比例：只把框挪回画面内（尺寸不动）
+    b.x = Math.max(0, Math.min(1 - b.w, b.x));
+    b.y = Math.max(0, Math.min(1 - b.h, b.y));
+    return b;
+  }
+  var max = maxRatioSize(ratio, W, H);
+  var frac = (box && box.frac > 0)
+    ? clampNum(box.frac, 1 / Math.max(1, max.w), 1)
+    : Math.min(1, clampNum(b.w * W, 1, max.w) / max.w);
+  var pw = Math.max(1, Math.round(max.w * frac));
+  var ph = Math.max(1, Math.round(pw / ratio));
+  if(ph > H){ ph = Math.max(1, Math.floor(H)); pw = Math.max(1, Math.round(ph * ratio)); }
+  if(pw > W){ pw = Math.max(1, Math.floor(W)); ph = Math.max(1, Math.round(pw / ratio)); }
+  var out = withBoxSize(b, pw / W, ph / H);
+  out.frac = Math.max(1 / Math.max(1, max.w), pw / max.w);
+  return out;
+}
+/* 把源框的"元信息"补到目标框上：w/h/x/y 用目标的，其它字段（frac 等）从源框抄过来。
+   ⚠️ 为什么必须有这个：拖拽过程中，起点会被存成一份 `{x,y,w,h}` 快照（cropSt.start），
+   而 moveBox / resizeBox 都是"只有 x/y/w/h"的纯函数。如果直接把它们的结果塞进 cropSt.box，
+   就会一路丢掉 frac —— 拖动结束后的那次延迟渲染里 readOpts → cropBoxSnapshot 就会抛错，
+   表现为「拖完预览不再刷新」（真机 2026 就是这么炸的）。
+   所以在**拖动路径的每次落定**处，都要用这个函数把 frac 从权威源补回来。 */
+function carryBoxMeta(from, to){
+  if(!to) return to;
+  if(from && from.frac > 0) to.frac = from.frac;
+  if(from && from.pxW > 0) to.pxW = from.pxW;       // 尺寸的权威值（像素）
+  if(from && from.refW > 0){ to.refW = from.refW; to.refH = from.refH; }
+  return to;
+}
+/* 以原框中心为基准，套用新的归一化宽高，并保证整框留在画面内。
+   ⚠️ 语义是「改尺寸」：**除了 w/h/x/y，其它字段（尤其是 frac / pxW / refW）原样保留**。
+   任何"重建框对象"的地方都必须走这里，不要手写 {x,y,w,h} 字面量 —— 会丢 frac。
+   ⚠️⚠️ **必须是纯函数：返回新对象，绝不修改传入的 b**。
+   曾经它原地改 b —— 而拖拽时 b 就是 `cropSt.start`（pointerdown 的快照），
+   于是每收到一个 pointermove，起点就被改小一次，位移被逐次累积：
+   同一条 60px 轨迹，发 1 个事件是 540×540、发 12 个就成 210×210、发 30 个直接塌到 16×16。
+   真机上一次缓慢拖动会发几十上百个 pointermove → 用户一拖框就没了。
+   （真机 2026-10 复现；修法就是把起点快照保护成不可变。） */
+function withBoxSize(b, nw, nh){
+  nw = Math.min(1, Math.max(0.02, nw));
+  nh = Math.min(1, Math.max(0.02, nh));
+  var cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+  var out = carryBoxMeta(b, { x: 0, y: 0, w: nw, h: nh });
+  out.x = Math.max(0, Math.min(1 - nw, cx - nw / 2));
+  out.y = Math.max(0, Math.min(1 - nh, cy - nh / 2));
+  return out;
+}
+/* 按目标比例「贴合但保留相对大小」：把这个框换到另一张（不同比例的）图上时用。
+   归一化框是跟图片比例相关的 —— 同一个 {0.75,1} 在 4:3 的图上是正方形，
+   套到 3:2 的图上就不是了，所以每一张都要**各自**重算一次宽高。
+   怎么同时保住三件事：
+     · 中心位置（归一化）原样保留；
+     · 尺寸用 box.pxW（像素宽度，权威值）还原 —— 大图上「1 像素」比归一化 0.02 还小，
+       只靠归一化宽高传递会一路被夹歪，所以尺寸必须以像素为准；
+     · 不小于"归一化下限折算出来的像素下限"（2%），否则下游 normToRect 的 0.02
+       夹取会把比例夹歪。
+   box.refW / box.refH 是这个框**当初是在多大的画布上归一化的**（编辑器里就是预览画布）。
+   地板的 2% 必须以它为基准，再按目标图的尺寸放大 —— 否则在"预览小画布 + 大原图"
+   这种组合下，地板会被算小 3 倍，比例就在最小尺寸处崩了（1920×1080 上踩到过）。
+   注意：这里**不能**用 fitBoxToRatio —— 那会把框顶到最大，用户拖小的尺寸会被弹回去。 */
+function refitBoxToRatio(box, ratio, W, H){
+  var b = {
+    x: clampNum(box && box.x, 0, 1), y: clampNum(box && box.y, 0, 1),
+    w: clampNum(box && box.w, 0.02, 1), h: clampNum(box && box.h, 0.02, 1)
+  };
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)) return b;
+  var max = maxRatioSize(ratio, W, H);
+  // 地板：同时满足「本图上的 2%」和「参考画布上的 2%」折算过来的像素，
+  // 并留出高度向上取整的 1 像素余量 —— 详见 minRatioWidth 的说明。
+  var refW = (box && box.refW > 0) ? box.refW : W;
+  var refH = (box && box.refH > 0) ? box.refH : H;
+  var needW = Math.max(W * 0.02, refW * 0.02);
+  var needH = Math.max(H * 0.02, refH * 0.02);
+  var minW = Math.max(1, Math.min(max.w, minRatioWidth(ratio, needW, needH)));
+  var frac = (box && box.frac > 0) ? clampNum(box.frac, 1 / Math.max(1, max.w), 1) : null;
+  var pw;
+  if(box && box.pxW > 0) pw = Math.round(box.pxW);                                   // 首选：像素宽度
+  else if(frac !== null) pw = Math.round(max.w * frac);                              // 次选：相对大小
+  else pw = Math.round(b.w * W);                                                     // 兜底：按当前图估
+  pw = Math.round(clampNum(pw, minW, max.w));
+  var ph = Math.round(pw / ratio);
+  if(ph > max.h){ ph = Math.max(1, Math.round(max.h)); pw = Math.max(1, Math.round(ph * ratio)); }
+  if(pw > max.w){ pw = Math.max(1, Math.round(max.w)); ph = Math.max(1, Math.round(pw / ratio)); }
+  var out = withBoxSize(b, pw / W, ph / H);
+  out.frac = clampNum(pw / max.w, 1 / Math.max(1, max.w), 1);
+  out.pxW = pw;
+  return out;
+}
+/* 移动（只改位置，不改大小，整框夹在画面内） */
+function moveBox(box, dx, dy){
+  var w = clampNum(box.w, 0.02, 1), h = clampNum(box.h, 0.02, 1);
+  return {
+    x: Math.max(0, Math.min(1 - w, clampNum(box.x, 0, 1) + dx)),
+    y: Math.max(0, Math.min(1 - h, clampNum(box.y, 0, 1) + dy)),
+    w: w, h: h
+  };
+}
+/* 拖手柄缩放。h 是手柄名（nw/n/ne/w/e/sw/s/se），dx/dy 是归一化位移。
+   lockRatio>0 时锁比例；否则自由缩放（用于「原图比例」以外的自由情形）。 */
+function resizeBox(box, handle, dx, dy, lockRatio){
+  var L = clampNum(box.x, 0, 1), T = clampNum(box.y, 0, 1);
+  var W = clampNum(box.w, 0.02, 1), H = clampNum(box.h, 0.02, 1);
+  var R = Math.min(1, L + W), B = Math.min(1, T + H);
+  var h = String(handle || 'se');
+  var west = h.indexOf('w') >= 0, east = h.indexOf('e') >= 0;
+  var north = h.charAt(0) === 'n', south = h.charAt(0) === 's';
+  var nL = L, nT = T, nR = R, nB = B;
+  // 注意夹取范围：往左/往上拖的手柄，最多只能推到「对面那条边」，反过来也一样，
+  // 否则框会被推成负数（曾经写成 Math.min(R-0.02, ...) / Math.min(B-0.02, ...)，方向反了）
+  if(west) nL = Math.max(0, Math.min(R, L + dx));
+  if(east) nR = Math.min(1, Math.max(L, R + dx));
+  if(north) nT = Math.max(0, Math.min(B, T + dy));
+  if(south) nB = Math.min(1, Math.max(T, B + dy));
+
+  if(lockRatio > 0){
+    // 缩放过程中锁死比例。
+    // 角手柄：对角那个角不动（锚点）；
+    // 边手柄：被拖的那条边按鼠标走，另一条边由比例推出，**重心留在原来的中心线上**
+    //（这样用「上/下/左/右」四个手柄时画面不会莫名其妙地跑偏）。
+    var corner = (west || east) && (north || south);
+    var cx = L + W / 2, cy = T + H / 2;
+    var nw, nh;
+    if(corner){
+      var anchorX = west ? nR : nL, anchorY = north ? nB : nT;
+      var wNow = Math.abs((west ? nL : nR) - anchorX);
+      var hNow = Math.abs((north ? nT : nB) - anchorY);
+      nw = (wNow / Math.max(1e-6, hNow)) >= lockRatio ? wNow : hNow * lockRatio;
+      nh = nw / lockRatio;
+      var maxW = west ? anchorX : (1 - anchorX);
+      var maxH = north ? anchorY : (1 - anchorY);
+      var k = Math.min(1, maxW / Math.max(1e-6, nw), maxH / Math.max(1e-6, nh));
+      nw = Math.max(0.02, nw * k);
+      nh = Math.max(0.02, nh * k);
+      var px = west ? anchorX - nw : anchorX;
+      var py = north ? anchorY - nh : anchorY;
+      return { x: Math.max(0, Math.min(1 - nw, px)), y: Math.max(0, Math.min(1 - nh, py)), w: nw, h: nh };
+    }
+    if(west || east){
+      nw = Math.abs((west ? nL : nR) - (west ? nR : nL));
+      nh = nw / lockRatio;
+      var maxH2 = Math.min(cy, 1 - cy) * 2;
+      if(nh > maxH2 && maxH2 > 0){ nh = maxH2; nw = nh * lockRatio; }
+    } else {
+      nh = Math.abs((north ? nT : nB) - (north ? nB : nT));
+      nw = nh * lockRatio;
+      var maxW2 = Math.min(cx, 1 - cx) * 2;
+      if(nw > maxW2 && maxW2 > 0){ nw = maxW2; nh = nw / lockRatio; }
+    }
+    nw = Math.max(0.02, nw); nh = Math.max(0.02, nh);
+    var fx = (west ? nR - nw : (east ? nL : cx - nw / 2));
+    var fy = (north ? nB - nh : (south ? nT : cy - nh / 2));
+    return { x: Math.max(0, Math.min(1 - nw, fx)), y: Math.max(0, Math.min(1 - nh, fy)), w: nw, h: nh };
+  }
+  return { x: nL, y: nT, w: Math.max(0.02, nR - nL), h: Math.max(0.02, nB - nT) };
+}
+// opt: { mode:'box'|'edge', ratio:'orig'|'1:1'|'custom', ratioW, ratioH,
+//        anchor:'tl'..'br', zoom:10~100, dx:-50~50, dy:-50~50,
+//        box:{x,y,w,h} 归一化伸缩框（有就用它，没有才走 anchor/zoom/dx/dy）,
+//        edgePercent:0~30, edgePx:>=0 }
+function cropRect(w, h, opt){
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  opt = opt || {};
+  var x = 0, y = 0, cw = w, ch = h;
+  if(opt.mode === 'edge'){
+    var n = (opt.edgePx > 0) ? Math.round(opt.edgePx) : Math.round(Math.min(w, h) * clampNum(opt.edgePercent, 0, 45) / 100);
+    n = Math.max(0, n);
+    x = n; y = n; cw = w - 2 * n; ch = h - 2 * n;
+    if(cw < 1){ cw = 1; x = Math.floor((w - 1) / 2); }
+    if(ch < 1){ ch = 1; y = Math.floor((h - 1) / 2); }
+  } else if(opt.box && opt.box.w > 0 && opt.box.h > 0){
+    // 伸缩框路径：框就是裁剪矩形。
+    // 说明（这里是"界面 / 导出"唯一的事实源，两边都必须走这一条）：
+    //  · 归一化框是「跟图片比例相关」的 —— 同一个 {0.75,1} 在 4:3 的图上是正方形，
+    //    套到 3:2 的图上就不是了。所以**每一张图都要各自解一次**，
+    //    否则批量里只有碰巧同比例的那几张是对的（真机上就是这么翻车的）。
+    //  · 尺寸用 box.frac（占这张图同比例最大块的多少）还原：中心位置保持，
+    //    frac=1 时每张图都拿到自己的最大内接块（800×600→600×600、3000×2000→2000×2000、
+    //    320×240→240×240、600×1000→600×600）。
+    //  · ratio = 0（原图比例）时不动，保持用户拖出来的样子。
+    var rr = opt.ratio === 'orig' || opt.ratio === undefined ? 0 : ratioOf(opt, w, h);
+    var useBox = (rr > 0) ? refitBoxToRatio(opt.box, rr, w, h) : opt.box;
+    var rb = normToRect(useBox, w, h, rr);
+    x = rb.x; y = rb.y; cw = rb.w; ch = rb.h;
+  } else {
+    // 老路径（迁移兜底 / 程序化设置时用）：比例 + 锚点 + zoom + 微调。
+    // 保持原来那套「长边吃满再夹回」的算法（已被单测钉住），只是多了一条伸缩框快路。
+    var r = ratioOf(opt, w, h);
+    var zoom = clampNum(opt.zoom === undefined ? 100 : opt.zoom, 5, 100) / 100;
+    if(r >= w / h){ cw = w; ch = w / r; }
+    else { ch = h; cw = h * r; }
+    cw = Math.max(1, Math.round(cw * zoom));
+    ch = Math.max(1, Math.round(ch * zoom));
+    if(cw > w){ cw = Math.floor(w); ch = cw / r; }
+    if(ch > h){ ch = Math.floor(h); cw = ch * r; }
+    cw = Math.max(1, Math.min(w, Math.round(cw)));
+    ch = Math.max(1, Math.min(h, Math.round(ch)));
+    var a = anchorOf(opt.anchor);
+    x = Math.round((w - cw) * a[0]);
+    y = Math.round((h - ch) * a[1]);
+    x += Math.round(w * clampNum(opt.dx, -80, 80) / 100);
+    y += Math.round(h * clampNum(opt.dy, -80, 80) / 100);
+    x = Math.max(0, Math.min(w - cw, x));
+    y = Math.max(0, Math.min(h - ch, y));
+  }
+  return { x: x, y: y, w: cw, h: ch };
+}
+function ratioOf(opt, w, h){
+  var r = opt.ratio;
+  if(r === '1:1') return 1;
+  if(r === '3:4') return 3 / 4;
+  if(r === '4:3') return 4 / 3;
+  if(r === '16:9') return 16 / 9;
+  if(r === '9:16') return 9 / 16;
+  if(r === '21:9') return 21 / 9;
+  if(r === 'custom'){
+    var a = Math.max(1, parseInt10(opt.ratioW, 4));
+    var b = Math.max(1, parseInt10(opt.ratioH, 5));
+    return a / b;
+  }
+  return w / h;   // 原图比例
+}
+/* ---------- ② 旋转 / 翻转：算出画布要多大 ---------- */
+/* ---------- ③ 改尺寸：算出目标宽高 ---------- */
+/* ---------- 输出格式 / 无损判定 ---------- */
+/* extOf 定义在下面 IMG-ENGINE 段里（引擎也要用），这里直接用 */
+function fmtOfName(name){
+  var e = extOf(name);
+  if(e === 'jpg' || e === 'jpeg' || e === 'jpe') return 'jpeg';
+  if(e === 'png') return 'png';
+  if(e === 'webp') return 'webp';
+  return '';
+}
+function typeOf(fmt){ return fmt === 'jpeg' ? 'image/jpeg' : fmt === 'webp' ? 'image/webp' : 'image/png'; }
+function extOfFmt(fmt){ return fmt === 'jpeg' ? 'jpg' : fmt === 'webp' ? 'webp' : 'png'; }
+/* 返回 true 表示这一张的输出会掉画质。
+   判断分两种情况，别混在一起：
+   · 画面原封不动（transformed=false）且格式没变 → 走字节级剥元数据，不重编码 → 无损
+   · 画面动过之后就必须重编码：PNG 目标仍然无损（PNG 是无损编码）；
+     JPG 目标必然有损；WebP 目标走 canvas 的「画质」参数，算有损（画质 100 也一样） */
+/* 逐项判断：某个操作会不会「重采样 / 重绘像素」。
+   注意这**不等于**整条链路无损 —— 裁剪和 90° 整数倍旋转本身是像素级搬运不重采样，
+   但只要后面还要编码一次，JPG / WebP 目标照样会再掉画质（见上面 outputIsLossy）。 */
+/* 一句话说明「这次会损失什么」，界面里由它统一生成说明，避免文案自相矛盾 */
+/* ---------- ⑤ 目标体积：二分逼近质量（边界与回退都要能测） ---------- */
+/* probe(quality) → { size, blob }
+   qualities：从小到大排列的画质档位
+   返回 { blob, size, quality, hit, usedQuality, note }
+   hit=false 表示已经压到最低画质还是没到目标，此时返回「压出来的最小那一个」 */
+function fmtSizeStatic(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+/* ---------- 水印几何（渲染要用的数值计算，也算纯函数） ---------- */
+function posToXY(W, H, bw, bh, marginPx, pos){
+  var m = marginPx;
+  var col = (pos && pos.charAt(1) === 'l') ? 0 : (pos && pos.charAt(1) === 'r') ? 2 : 1;
+  var row = (pos && pos.charAt(0) === 't') ? 0 : (pos && pos.charAt(0) === 'b') ? 2 : 1;
+  var x = col === 0 ? m : (col === 2 ? W - bw - m : (W - bw) / 2);
+  var y = row === 0 ? m : (row === 2 ? H - bh - m : (H - bh) / 2);
+  return { x: x, y: y };
+}
+
+/* 把这一段的纯函数显式挂到全局，好让开发脚本能单独抽出来跑单测（浏览器里也一并可用）。
+   必须在标记区内直接写函数名赋值 —— 写成循环 `globalThis[k] = obj[k]` 会踩到
+   “函数名是 globalThis 上的访问器属性”这个坑，导致挂上去的东西反向覆盖函数定义。
+   以后要加新能力：把纯计算写在这一段里，再在这里补一行即可。 */
+globalThis.cropRect = cropRect;
+globalThis.normToRect = normToRect;
+globalThis.rectToNorm = rectToNorm;
+globalThis.fitBoxToRatio = fitBoxToRatio;
+globalThis.refitBoxToRatio = refitBoxToRatio;
+globalThis.maxRatioSize = maxRatioSize;
+globalThis.lockBoxToRatio = lockBoxToRatio;
+globalThis.withBoxSize = withBoxSize;
+globalThis.moveBox = moveBox;
+globalThis.resizeBox = resizeBox;
+globalThis.ratioOf = ratioOf;
+globalThis.clampNum = clampNum;
+globalThis.extOf = extOf;
+globalThis.fmtOfName = fmtOfName;
+globalThis.typeOf = typeOf;
+globalThis.extOfFmt = extOfFmt;
+globalThis.fmtSizeStatic = fmtSizeStatic;
+globalThis.posToXY = posToXY;
+/* ==== PURE-CORE-END ==== */
+
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for(var n = 0; n < 256; n++){
+    var c = n;
+    for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  var c = 0xFFFFFFFF;
+  for(var i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files){
+  var enc = new TextEncoder();
+  var now = new Date();
+  var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  var parts = [], central = [];
+  var offset = 0;
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var nameBytes = enc.encode(f.name);
+    var crc = crc32(f.data);
+    var size = f.data.length;
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);
+    lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true);
+    lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameBytes.length, true);
+    lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint16(30, 0, true);
+    ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true);
+    ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+    offset += 30 + nameBytes.length + size;
+  }
+  var cdSize = 0;
+  for(var j = 0; j < central.length; j++) cdSize += central[j].length;
+  var eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(4, 0, true);
+  eocd.setUint16(6, 0, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  eocd.setUint16(20, 0, true);
+  var all = parts.concat(central);
+  all.push(new Uint8Array(eocd.buffer));
+  return new Blob(all, { type: 'application/zip' });
+}/* 优先 createImageBitmap（显式要求按 EXIF 方向解码），失败再退回 <img>。
+   release* 用来「处理完立刻放手」，避免批量处理时内存越吃越多。 */
+function releaseBmp(b){
+  if(!b) return;
+  if(typeof b.close === 'function'){ try{ b.close(); }catch(e){} }
+  else if(b.tagName === 'IMG'){ b.src = ''; }
+}
+
+function releaseCanvas(c){
+  if(!c) return;
+  try{ c.width = 0; c.height = 0; }catch(e){}
+}
+
+function decodeViaImg(file){
+  return new Promise(function(res, rej){
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function(){ URL.revokeObjectURL(url); res(img); };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('这张图片打不开')); };
+    img.src = url;
+  });
+}
+
+function decodeFile(file){
+  if(window.createImageBitmap){
+    return createImageBitmap(file, { imageOrientation:'from-image' })
+      .catch(function(){ return createImageBitmap(file); })
+      .catch(function(){ return decodeViaImg(file); });
+  }
+  return decodeViaImg(file);
+}
+
+function newCanvas(w, h){
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+
+/* ===================== 编码 / 目标体积 ===================== */
+function canvasToBlob(c, type, q){
+  return new Promise(function(res, rej){
+    if(!c.toBlob){ rej(new Error('这个浏览器不支持导出图片')); return; }
+    try{
+      c.toBlob(function(b){ b ? res(b) : rej(new Error('导出失败（可能是尺寸超出浏览器上限）')); }, type, q);
+    }catch(e){ rej(new Error('导出失败：' + e.message)); }
+  });
+}
+
+function fmtSize(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}/* 锚点九宫格 → [横向比例, 纵向比例]。cropRect 的兜底路径要用；
+   原来是 img-batch 的 anchorOf，img-crop 里没有水印九宫格控件，
+   所以只留这个纯查表函数，不挂 globalThis。 */
+function anchorOf(pos){
+  var p = String(pos || 'mc');
+  var cx = (p.charAt(1) === 'l') ? 0 : (p.charAt(1) === 'r') ? 1 : 0.5;
+  var cy = (p.charAt(0) === 't') ? 0 : (p.charAt(0) === 'b') ? 1 : 0.5;
+  return [cx, cy];
+}
+/* ==========================================================================
+   裁剪几何（从 img-batch 的几何管线裁下来的最小版：只做裁剪）
+   ==========================================================================
+   ⚠️ 关键：几何必须按**实际传进来的画布尺寸** srcW/srcH 算，不能按原图尺寸。
+   预览画布是缩小过的（例如原图 3376×1440 → 预览 1000×427），如果拿原图尺寸算裁剪矩形、
+   再拿这个矩形去小画布上取源，就会只取到右边一小条、其余全透明（"预览在骗人"的经典 bug）。
+   传 srcW/srcH 之后，同一套公式在两个尺度上算出的**相对位置与比例完全一致**。
+   forceCropRect：调用方已经算好了裁剪矩形（**原图口径**）时传进来，
+   预览就按它等比缩放到预览画布上取源 —— 这样预览的裁剪范围与真实导出严格一致，
+   而不是各自按自己的画布再解一次（那会在取整上分叉）。
+   ========================================================================== */
+function geometryPlan(it, o, srcW, srcH, forceCropRect){
+  var w = Math.max(1, Math.round(srcW || (it ? it.w : 1)));
+  var h = Math.max(1, Math.round(srcH || (it ? it.h : 1)));
+  var c = { mode:'none' };
+  var opt = o.crop || o;
+  if(opt && (opt.mode || opt.box || opt.ratio)){
+    var rr = (opt.ratio === 'orig' || opt.ratio === undefined) ? 0 : (function(){
+      if(opt.ratio === 'custom'){
+        var a = Math.max(1, parseInt(String(opt.ratioW), 10) || 4);
+        var b = Math.max(1, parseInt(String(opt.ratioH), 10) || 5);
+        return a / b;
+      }
+      var p = String(opt.ratio).split(':');
+      return (parseFloat(p[0]) || 1) / (parseFloat(p[1]) || 1);
+    })();
+    var r = forceCropRect
+      ? normToRect(rectToNorm(forceCropRect, w, h), w, h, rr)
+      : cropRect(w, h, opt);
+    if(!(r.x === 0 && r.y === 0 && r.w === w && r.h === h)){
+      c = { mode:'crop', rect:r };
+      w = r.w; h = r.h;
+    }
+  }
+  return { crop:c, w:w, h:h };
+}
+/* 「原图口径」的裁剪矩形与等比映射：**直接用 PURE-CORE 里照搬过来的那两个**
+   （finalCropRectOf(it, cropOpts) / mapRectTo(rect, srcW, srcH, dstW, dstH)），
+   不再重复定义一份 —— 同一份文件里两个同名 function 会互相覆盖，读代码的人容易看懵。 *//* ==========================================================================
+   图片裁剪 · 应用层
+   只做一件事：把一批图按裁剪框裁好、打包下载。
+   不包含旋转 / 改尺寸 / 水印 / 目标体积 / 剥元数据（那些在 img-batch 里）。
+   ========================================================================== */
+
+var $ = function(id){ return document.getElementById(id); };
+var items = [], selId = 0, seq = 0, busy = false;
+var pvSrc = null, pvSrcId = 0, pvToken = 0;
+var PREVIEW_SIDE = 1000;          // 编辑器的预览画布最大边
+/* pvSrc = 编辑器用的预览画布；pvSrcId = 它是**哪张图**的预览。
+   ⚠️ 这两个必须成对使用：切图时新预览是异步加载的，中间有一段
+   "已经选中 B、但 pvSrc 还是 A 的小画布"的窗口。如果这时渲染编辑器，
+   就会拿 B 的裁剪框按 A 的画布尺寸去归一化 —— 框当场被算歪，切回去就发现
+   "每张单独裁剪不生效 / 拖小的框又变大"。所以渲染前必须确认 pvSrc 属于当前选中的那张图。 */
+
+/* ---------- 出厂默认值（重置与「记住设置」都从这一张表取，避免两份默认值漂移） ---------- */
+var FACTORY = {
+  cropMode: 'box', cropRatio: 'orig', cropCw: '4', cropCh: '5',
+  cropEdgePx: '2', cropEdgeNum: '0',
+  perItem: false,
+  outFmt: 'keep', outQ: '92', suffix: '_crop'
+};
+
+/* ==========================================================================
+   消息条 / 进度
+   ========================================================================== */
+/* ==========================================================================
+   消息条 / 进度
+   ========================================================================== */
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[c]; }); }
+function flash(text, kind){
+  var box = $('msg');
+  $('msgtxt').innerHTML = esc(text);
+  box.className = 'msg ' + (kind || 'ok');
+}
+function showMsg(boxId, txtId, text, kind){
+  $(txtId).innerHTML = esc(text);
+  $(boxId).className = 'msg ' + (kind || 'err');
+}
+function setProgress(p, text){
+  $('bar').style.width = Math.round(Math.max(0, Math.min(1, p)) * 100) + '%';
+  if(text != null) $('pstat').textContent = text;
+}
+function syncButtons(){
+  var has = items.length > 0;
+  $('runAll').disabled = !has || busy;
+  $('runOne').disabled = !has || busy || selIndex() < 0;
+  $('clear').disabled = !has || busy;
+  $('cancel').classList.toggle('hidden', !busy);
+}
+
+/* ==========================================================================
+   队列 / 缩略图
+   ========================================================================== */
+function selIndex(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return i;
+  return -1;
+}
+function selItem(){ var i = selIndex(); return i < 0 ? null : items[i]; }
+/* 把编辑器里当前那张框，归还给它当初属于的那张图。
+   切图 / 切"每张单独"开关 / 改比例之前都要先调用 —— 否则下一次编辑会写到错的图上。 */
+function storeBoxForSel(){
+  // 先归位到"它属于的那张图"
+  stashCurrentBox();
+  // 再管归属：
+  //   · 「每张单独」关闭 → 框是整队共享的，归属无所谓，直接换成新选中的图
+  //   · 打开 → 那张新图已经有自己的框就交给它；没有就承认"这张框现在属于新图"
+  var it = selItem();
+  if(!it) return;
+  if(!$('perItem').checked){ cropSt.assignedId = it.id; return; }
+  // ⚠️ 这里要置 **null**，不能置 0：adoptBoxFor 开头那句
+  //    `if(cropSt.assignedId === it.id) return;` 会把 0 与"还没归属"混为一谈，
+  //    于是"这张图已经有自己的框"时直接 return，cropSt.box 还留着上一张的框
+  //    —— 每张单独裁剪在真机上就是这么失效的（框被上一张的覆盖了）。
+  if(it.box){ cropSt.assignedId = null; return; }
+  cropSt.assignedId = it.id;
+  if(cropSt.box) it.box = cloneBox(cropSt.box);
+}
+function baseOf(name){ return String(name || '').replace(/\.[a-z0-9]+$/i, ''); }
+/* 复制一份框（深拷贝）。
+   ⚠️ 必须复制，不能共享引用：`it.box` 与 `cropSt.box` 指向同一个对象时，
+   renderCropEditor 里的 `cropSt.box.refW = W` 之类**原地写入**会顺手改掉"另一张图记下的框"，
+   于是切回去发现框被上一张的坐标系污染了（真机上表现为"每张单独裁剪不生效"）。 */
+function cloneBox(b){
+  if(!b) return null;
+  var o = { x: b.x, y: b.y, w: b.w, h: b.h };
+  if(b.frac > 0) o.frac = b.frac;
+  if(b.pxW > 0) o.pxW = b.pxW;
+  if(b.refW > 0){ o.refW = b.refW; o.refH = b.refH; }
+  return o;
+}
+
+function makeThumb(bmp){
+  var s = 96 / Math.max(bmp.width, bmp.height);
+  var w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  var c = newCanvas(w, h);
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bmp, 0, 0, w, h);
+  return c.toDataURL('image/png');
+}
+function updateCount(){
+  $('count').textContent = items.length ? ('共 ' + items.length + ' 张') : '还没有添加图片';
+}
+function selectItem(id){
+  storeBoxForSel();      // 先把编辑器里的框还给"它当初属于的那张图"
+  selId = id;
+  var it = selItem();
+  renderThumbs(); renderList();
+  // ★ 立刻把预览作废：新预览是异步来的，这中间的渲染绝不能拿旧画布去算新图的框
+  pvSrc = null; pvSrcId = 0;
+  ++pvToken;
+  if(!it){ renderCropEditor(); return; }
+  var myToken = pvToken;
+  // 编辑器用缩到 PREVIEW_SIDE 的小画布：既能看清，又不吃内存
+  var scale = Math.min(1, PREVIEW_SIDE / Math.max(it.w, it.h));
+  var pw = Math.max(1, Math.round(it.w * scale)), ph = Math.max(1, Math.round(it.h * scale));
+  decodeFile(it.file).then(function(bmp){
+    var c = newCanvas(pw, ph);
+    var ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(bmp, 0, 0, pw, ph);
+    releaseBmp(bmp);
+    if(myToken !== pvToken){ releaseCanvas(c); return; }
+    if(pvSrc) releaseCanvas(pvSrc);
+    pvSrc = c;
+    pvSrcId = it.id;                       // 记下这块预览属于哪张图
+    renderCropEditor();
+    syncButtons();
+  }).catch(function(){
+    if(myToken !== pvToken) return;
+    pvSrc = null; pvSrcId = 0;
+    renderCropEditor();
+  });
+  syncButtons();
+}
+function renderThumbs(){
+  var box = $('thumbs'), html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    html += '<div class="thumb' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '" title="' + esc(it.name) + '">'
+          +   '<img src="' + it.thumb + '" alt="">'
+          +   '<button type="button" class="x" data-del="' + it.id + '" title="移除这张">×</button>'
+          +   (it.status ? '<span class="st' + (it.stErr ? ' err' : '') + '">' + esc(it.status) + '</span>' : '')
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+function setThumbStatus(it){
+  var t = $('thumbs').querySelector('.thumb[data-id="' + it.id + '"]');
+  if(!t) return;
+  var st = t.querySelector('.st');
+  if(!it.status){ if(st) st.remove(); return; }
+  if(!st){ st = document.createElement('span'); st.className = 'st'; t.appendChild(st); }
+  st.className = 'st' + (it.stErr ? ' err' : '');
+  st.textContent = it.status;
+}
+function renderList(){
+  var box = $('list');
+  if(!items.length){ box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  var html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i], extra = '', cls = '';
+    if(it.outSize){
+      extra = ' → ' + fmtSize(it.outSize);
+      var d = it.outSize - it.file.size;
+      cls = d > 0 ? ' more' : (d < 0 ? ' less' : '');
+      extra += ' (' + pctText(it.file.size, it.outSize) + ')';
+    }
+    html += '<div class="row' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '">'
+          +   '<span class="rn">' + (i + 1) + '. ' + esc(it.name) + '</span>'
+          +   '<span class="rv">' + it.w + ' × ' + it.h + (it.outW ? (' → ' + it.outW + ' × ' + it.outH) : '') + '</span>'
+          +   '<span class="rv' + cls + '">' + (it.file.size ? fmtSize(it.file.size) : '-') + extra + '</span>'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+function updateRow(it){
+  var rows = $('list').querySelectorAll('.row');
+  for(var i = 0; i < items.length && i < rows.length; i++){
+    if(items[i].id !== it.id) continue;
+    var rvs = rows[i].querySelectorAll('.rv');
+    if(rvs.length < 2) return;
+    rvs[0].textContent = it.w + ' × ' + it.h + (it.outW ? (' → ' + it.outW + ' × ' + it.outH) : '');
+    rvs[1].textContent = fmtSize(it.file.size) + (it.outSize ? (' → ' + fmtSize(it.outSize) + ' (' + pctText(it.file.size, it.outSize) + ')') : '');
+    var d = it.outSize ? it.outSize - it.file.size : 0;
+    rvs[1].className = 'rv' + (d > 0 ? ' more' : (d < 0 ? ' less' : ''));
+    return;
+  }
+}
+/* 体积百分比变化 */
+function pctText(before, after){
+  if(!before) return '';
+  var d = (1 - after / before) * 100;
+  return (d >= 0 ? '↓ ' : '↑ ') + Math.abs(d).toFixed(1) + '%';
+}
+
+/* ---------- 添加 / 移除 ---------- */
+/* 打不开的图：按文件类型给出**具体可行的下一步**（最常见的是 iPhone 的 HEIC） */
+function whyCantOpen(names){
+  var first = names[0] || '';
+  var e = extOf(first).toLowerCase();
+  var head = names.length === 1 ? ('「' + first + '」') : (names.length + ' 张（如「' + first + '」）');
+  if(e === 'heic' || e === 'heif'){
+    return head + ' 是 iPhone 的 HEIC 格式，浏览器读不了。请先在手机「照片」里导出成 JPG，或换一张。';
+  }
+  return head + ' 读不出来。常见原因与办法：① HEIC（iPhone 截图/照片）→ 先在手机里导出成 JPG；'
+       + '② 网页图只存下了缩略图/半张 → 重新保存原图；③ 文件损坏或后缀名不对 → 换一张试试。';
+}
+function addFiles(fileList){
+  var files = Array.prototype.slice.call(fileList || []);
+  if(!files.length) return;
+  var accepted = [], skipped = [];
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var t = (f.type || '').toLowerCase();
+    var e = extOf(f.name);
+    if(t === 'image/jpeg' || t === 'image/png' || t === 'image/webp'
+       || e === 'jpg' || e === 'jpeg' || e === 'png' || e === 'webp') accepted.push(f);
+    else skipped.push(f.name);
+  }
+  if(!accepted.length){
+    // 拖进来的很可能是**文件夹**（浏览器给的是目录条目，不是图片）——用中性提示 + 直接告诉怎么办
+    var looksLikeFolder = files.some(function(f){ return !f.type && !extOf(f.name); });
+    flash(looksLikeFolder
+      ? '这些不是图片文件。如果拖的是整个文件夹，请打开文件夹、把里面的图片一起选中再拖进来。'
+      : '这些文件都不是 JPG / PNG / WebP 图片，没有添加。', 'warn');
+    return;
+  }
+  busy = true; syncButtons();
+  var done = 0, failed = [];
+  function step(){
+    if(done >= accepted.length){
+      busy = false; syncButtons();
+      if(items.length && selIndex() < 0) selectItem(items[0].id);
+      else { renderThumbs(); renderList(); refreshEditor(); }
+      var m = '已添加 ' + accepted.length + ' 张图片。';
+      if(skipped.length) m += ' 已忽略 ' + skipped.length + ' 个不是图片的文件（常见原因：拖进来的是整个文件夹，请把里面的图片一起选中）。';
+      if(failed.length) m += ' 有 ' + failed.length + ' 张打不开：' + whyCantOpen(failed);
+      flash(m, failed.length ? 'warn' : 'ok');
+      updateCount();
+      return;
+    }
+    var f = accepted[done];
+    $('count').textContent = '正在读取图片 ' + (done + 1) + ' / ' + accepted.length + ' …';
+    decodeFile(f).then(function(bmp){
+      var item = {
+        id: ++seq, file: f, name: f.name, base: baseOf(f.name), ext: extOf(f.name),
+        fmt: fmtOfName(f.name) || 'jpeg',
+        w: bmp.width, h: bmp.height,
+        thumb: makeThumb(bmp), status: '', stErr: false,
+        outSize: 0, outW: 0, outH: 0,
+        // ★ 每张图单独裁剪时，各自的框放这里
+        box: null
+      };
+      releaseBmp(bmp);
+      items.push(item);
+      done++;
+      updateCount();
+      if(done % 8 === 0){ renderThumbs(); renderList(); }
+      setTimeout(step, 0);
+    }).catch(function(){
+      failed.push(f.name);
+      done++;
+      setTimeout(step, 0);
+    });
+  }
+  step();
+}
+function removeItem(id){
+  for(var i = 0; i < items.length; i++){
+    if(items[i].id !== id) continue;
+    items.splice(i, 1);
+    break;
+  }
+  if(selId === id){
+    selId = items.length ? items[Math.min(i, items.length - 1)].id : 0;
+    if(selId) selectItem(selId);
+    else { pvSrc = null; renderCropEditor(); }
+  }
+  renderThumbs(); renderList(); updateCount(); syncButtons();
+}
+function clearAll(){
+  items = []; selId = 0; pvSrc = null;
+  cropSt.box = null; cropSt.hasItem = false; cropSt.assignedId = 0; cropSt.srcW = 0; cropSt.srcH = 0;
+  renderThumbs(); renderList(); updateCount(); renderCropEditor(); syncButtons();
+  $('summary').textContent = '批量处理结束后，这里会显示：总张数、成功 / 失败数，以及处理前 → 处理后的总体积变化（省了百分之多少）。';
+  setProgress(0, '还没有开始处理。');
+}
+
+/* ==========================================================================
+   参数
+   ========================================================================== */
+function segVal(id){
+  var box = $(id);
+  if(!box) return '';
+  var on = box.querySelector('button.on');
+  return on ? (on.getAttribute('data-v') || '') : '';
+}
+function setSeg(id, v){
+  var box = $(id);
+  if(!box) return;
+  var kids = box.querySelectorAll('button');
+  for(var i = 0; i < kids.length; i++) kids[i].classList.toggle('on', kids[i].getAttribute('data-v') === v);
+}
+/* 目标比例（宽/高）；'orig' 返回 0 表示「不锁，随便拉」 */
+function cropTargetRatio(){
+  var r = segVal('cropRatio') || 'orig';
+  if(r === 'orig') return 0;
+  if(r === 'custom'){
+    var a = Math.max(1, parseInt10($('cropCw').value, 4));
+    var b = Math.max(1, parseInt10($('cropCh').value, 5));
+    return a / b;
+  }
+  var parts = r.split(':');
+  return (parseFloat(parts[0]) || 1) / (parseFloat(parts[1]) || 1);
+}
+/* 交给引擎的裁剪参数。★ perItem 时用「这张图自己的框」 */
+function readOpts(it){
+  var perItem = $('perItem').checked;
+  var target = it || selItem();
+  var useBox = cropSt.box;
+  if(perItem && target && target.box) useBox = target.box;
+  return {
+    mode: segVal('cropMode') || 'box',
+    ratio: segVal('cropRatio') || 'orig',
+    ratioW: +$('cropCw').value,
+    ratioH: +$('cropCh').value,
+    box: useBox ? { x: useBox.x, y: useBox.y, w: useBox.w, h: useBox.h,
+                    frac: useBox.frac, pxW: useBox.pxW, refW: useBox.refW, refH: useBox.refH } : null,
+    edgePercent: +$('cropEdgePx').value,
+    edgePx: +$('cropEdgeNum').value
+  };
+}
+function outFmtOf(it){
+  var f = segVal('outFmt') || 'keep';
+  if(f === 'keep') return it ? it.fmt : 'jpeg';
+  return f;
+}
+function qualityOf(){ return Math.max(0.4, Math.min(1, (+$('outQ').value) / 100)); }
+
+/* ==========================================================================
+   裁剪编辑器
+   ========================================================================== */
+var cropSt = { box:null, srcW:0, srcH:0, lastRatio:undefined, pointerId:-1, mode:'', handle:'', sx:0, sy:0, start:null, hasItem:false, pendingSnap:false, assignedId:0 };
+var cropCanvasBox = { W:0, H:0 };
+
+function cropActive(){ return (segVal('cropMode') || 'box') !== 'edge'; }
+
+/* 单张处理 / 导出时用的「这张图的裁剪参数」：
+   perItem 打开 → 该图自己的框（缺就用整队框兜一次）；否则一律用整队框。 */
+function cropOptsFor(it){
+  var perItem = $('perItem').checked;
+  var useBox = cropSt.box;
+  if(perItem){
+    if(it && it.box) useBox = it.box;
+    else if(it && !it.box) useBox = { x:0, y:0, w:1, h:1 };   // 这张还没单独调过 → 整张不裁
+  }
+  return {
+    mode: segVal('cropMode') || 'box',
+    ratio: segVal('cropRatio') || 'orig',
+    ratioW: +$('cropCw').value,
+    ratioH: +$('cropCh').value,
+    box: useBox,
+    edgePercent: +$('cropEdgePx').value,
+    edgePx: +$('cropEdgeNum').value
+  };
+}
+/* 把当前编辑器里的框，存回**它当初属于的那张图**。
+   ⚠️ 判据必须是 cropSt.assignedId（这张框是在哪张图上编辑出来的），不能是 selItem()。
+   反例（真的踩到）：选中 A 拖好框 → 切到 B（perItem 打开）→ A 的那张框还留在编辑器里，
+   这时如果按"当前选中的 B"去存，就会把 A 的框**存到 B 名下**，B 的框被覆盖、A 的框丢了。
+   切图 / 切粒度 / 重置之前都要先把框归位。 */
+function stashCurrentBox(){
+  if(!$('perItem').checked) return;
+  if(!cropSt.box || !(cropSt.assignedId > 0)) return;
+  for(var i = 0; i < items.length; i++){
+  }
+}
+/* perItem 模式切到某张图时：恢复它自己的框（没有就从整队框复制一份当起点） */
+function adoptBoxFor(it){
+  if(!$('perItem').checked) return;
+  if(cropSt.assignedId === it.id) return;
+  if(it.box){
+    cropSt.box = cloneBox(it.box);
+  } else if(cropSt.box){
+    // 首次进入这张图：拿"当前编辑器里的框"当起点（这样用户不必从零拖）
+    var copy = cloneBox(cropSt.box);
+    cropSt.box = copy;
+    it.box = cloneBox(copy);
+  } else {
+    cropSt.box = null;
+  }
+  cropSt.assignedId = it.id;
+  // ⚠️ 这里**不能**置 pendingSnap：pendingSnap 的语义是"比例切换时画布还没就绪，
+  //    下次渲染要按最大块补做一次贴合"。恢复"这张图自己的框"时框早就贴合好了，
+  //    再置上就会在 renderCropEditor 里被 fitBoxToRatio 顶成最大块 ——
+  //    表现就是"每张单独裁剪不生效 / 拖小的框切回来又变大"（真机上抓到的就是这个）。
+  cropSt.pendingSnap = false;
+}
+
+function setCropBox(box, keepRatio){
+  var W = cropCanvasBox.W, H = cropCanvasBox.H;
+  if(!(W > 0 && H > 0)){ cropSt.box = box; return; }
+  var r = cropTargetRatio();
+  var b = (keepRatio && r > 0) ? lockBoxToRatio(box, r, W, H) : fitBoxToRatio(box, 0, W, H);
+  b = withBoxSize(b, clampNum(b.w, 0.02, 1), clampNum(b.h, 0.02, 1));
+  b.frac = (box && box.frac > 0) ? box.frac : b.frac;
+  b.refW = W; b.refH = H;
+  cropSt.box = b;
+  cropSt.srcW = W; cropSt.srcH = H;
+  stashCurrentBox();
+  drawCropOverlay();
+  updateCropInfo();
+}
+/* 比例切换 / 自定义比例改动 / 重置：以当前中心为基准，按比例取最大一块 */
+function snapCropBoxMax(){
+  if(!cropSt.box || !cropCanvasBox.W) return;
+  setCropBox(cropSt.box, cropTargetRatio() > 0);
+}
+function defaultCropBox(W, H){
+  var r = cropTargetRatio();
+  var b = { x: 0, y: 0, w: 1, h: 1 };
+  if(r > 0) b = fitBoxToRatio(b, r, W, H);
+  return b;
+}
+function drawCropOverlay(){
+  var cbox = $('cropcbox'), cv = $('cropcv');
+  var b = cropSt.box;
+  if(!cropSt.hasItem || !b || !cv.width){
+    cbox.classList.add('dis');
+    $('cropph').classList.remove('hidden');
+    return;
+  }
+  $('cropph').classList.add('hidden');
+  var dispW = cv.clientWidth || cv.width, dispH = cv.clientHeight || cv.height;
+  var sx = cropCanvasBox.W ? dispW / cropCanvasBox.W : 1;
+  var sy = cropCanvasBox.H ? dispH / cropCanvasBox.H : 1;
+  cbox.classList.remove('dis');
+  // .cropedit 有 padding、canvas 又是 margin:0 auto 居中的，所以框坐标要加上画布偏移
+  var offL = cv.offsetLeft, offT = cv.offsetTop;
+  var host = $('cropedit');
+  if(host && cv.offsetParent !== host && cv.getBoundingClientRect && host.getBoundingClientRect){
+    var hrc = host.getBoundingClientRect(), crc = cv.getBoundingClientRect();
+    offL = crc.left - hrc.left - (host.clientLeft || 0);
+    offT = crc.top - hrc.top - (host.clientTop || 0);
+  }
+  cbox.style.left = (offL + b.x * cropCanvasBox.W * sx) + 'px';
+  cbox.style.top = (offT + b.y * cropCanvasBox.H * sy) + 'px';
+  cbox.style.width = Math.max(8, b.w * cropCanvasBox.W * sx) + 'px';
+  cbox.style.height = Math.max(8, b.h * cropCanvasBox.H * sy) + 'px';
+}
+/* 把选中的图画进编辑器画布 */
+function renderCropEditor(){
+  var cv = $('cropcv');
+  if(!cv) return;
+  var it = selItem();
+  cropSt.hasItem = !!it;
+  // ★ 只有当"预览画布确实属于当前选中的这张图"时才继续。
+  //   否则宁可什么都不做 —— 用别的图的画布尺寸去归一化这张图的框，
+  //   会把框算歪（切图时新预览还没加载完就是这个窗口）。
+  if(!it || !pvSrc || pvSrcId !== it.id){
+    cropCanvasBox = { W:0, H:0 };
+    cv.width = 1; cv.height = 1;
+    cv.style.width = ''; cv.style.height = '';
+    cropSt.assignedId = 0;
+    drawCropOverlay();
+    updateCropInfo();
+    return;
+  }
+  if($('perItem').checked) adoptBoxFor(it);
+  else cropSt.assignedId = it.id;
+  var W = pvSrc.width, H = pvSrc.height;
+  // clientWidth 含 padding → 减掉 2×8px 内边距 + 边框 + 余量，让框贴边时手柄仍完整可见
+  var host = $('cropedit');
+  var inner = (host && host.clientWidth) ? host.clientWidth : 360;
+  var cssW = Math.max(120, Math.min(760, inner - 16 - 2 - 2));
+  var cssH = Math.min(Math.round((window.innerHeight || 800) * 0.5), Math.round(cssW * H / W));
+  if(cssH < 90){ cssH = 90; }
+  var picChanged = (cropSt.srcW > 0) && (cropSt.srcW !== W || cropSt.srcH !== H);
+  cropSt.srcW = W; cropSt.srcH = H;
+  cropCanvasBox = { W: W, H: H };
+  cv.width = W; cv.height = H;
+  cv.style.width = cssW + 'px';
+  cv.style.height = cssH + 'px';
+  var ctx = cv.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  ctx.drawImage(pvSrc, 0, 0, W, H);
+  // ① 首次 / 换比例 / 换图 → 取最大一块；③ 同图同比例重渲染 → 尺寸原样保留（别把用户拖小的顶回去）
+  var r = cropTargetRatio();
+  var ratioChanged = (cropSt.lastRatio !== undefined) && (cropSt.lastRatio !== r);
+  cropSt.lastRatio = r;
+  // ★ "记住设置"恢复过来的裁剪框：走 setCropBox 那条路按**当前这张图**重新贴合。
+  //   必须在这里做（画布已就绪、比例已定），而且绝不当场把存下来的裸框塞进 cropSt.box ——
+  //   那会缺 frac / 尺寸对不上（img-batch 就是在这上面栽过）。
+  if(pendingBox) restoreBoxIfAny(W, H);
+  if(!cropSt.box){
+    cropSt.box = defaultCropBox(W, H);
+} else if(r > 0 && (ratioChanged || picChanged || cropSt.pendingSnap)){
+    var s1 = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.box = fitBoxToRatio(s1, r, W, H);
+  } else if(r > 0){
+    var s2 = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    var rf = refitBoxToRatio(s2, r, W, H);
+    if(!(rf.frac > 0)) rf.frac = 1 / Math.max(1, rf.w * W);
+    cropSt.box = rf;
+  } else {
+    var s3 = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.box = fitBoxToRatio(s3, 0, W, H);
+  }
+  cropSt.pendingSnap = false;
+  if(cropSt.box){ cropSt.box.refW = W; cropSt.box.refH = H; }
+  stashCurrentBox();
+  drawCropOverlay();
+  updateCropInfo();
+}
+/* ★ 显示的数字一律是「真实导出分辨率」口径（按原图算），绝不是编辑器预览画布的像素数。 */
+function updateCropInfo(){
+  var el = $('cropInfo');
+  if(!el) return;
+  var it = selItem();
+  var base = '拖动框内 = 移动；拖 8 个小方块 = 缩放。';
+  if(!it){ el.textContent = base + '比例锁在选定值上，框不会跑出画面。'; return; }
+  var o = cropOptsFor(it);
+  var r = cropRect(Math.max(1, Math.round(it.w)), Math.max(1, Math.round(it.h)), o);
+  var pct = Math.round(r.w * r.h / (it.w * it.h) * 100);
+  var modeTxt = o.mode === 'edge' ? '四周裁边后导出 ' : '裁剪后导出 ';
+  el.innerHTML = '原图 <b>' + it.w + ' × ' + it.h + '</b> ｜ ' + modeTxt + '<b>' + r.w + ' × ' + r.h + '</b> 像素（占原图 ' + pct + '%）';
+}
+function cropPointerPos(e){
+  var cv = $('cropcv');
+  var rect = cv.getBoundingClientRect();
+  var scaleX = rect.width ? (cropCanvasBox.W / rect.width) : 1;
+  var scaleY = rect.height ? (cropCanvasBox.H / rect.height) : 1;
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+function cropHitTest(p){
+  var b = cropSt.box;
+  if(!b) return '';
+  var W = cropCanvasBox.W, H = cropCanvasBox.H;
+  var x0 = b.x * W, y0 = b.y * H, x1 = x0 + b.w * W, y1 = y0 + b.h * H;
+  var tol = Math.max(10, Math.min(24, Math.min(W, H) * 0.04));
+  var nearL = p.x <= x0 + tol, nearR = p.x >= x1 - tol;
+  var nearT = p.y <= y0 + tol, nearB = p.y >= y1 - tol;
+  var inX = p.x >= x0 - tol && p.x <= x1 + tol, inY = p.y >= y0 - tol && p.y <= y1 + tol;
+  if(nearT && nearL) return 'nw';
+  if(nearT && nearR) return 'ne';
+  if(nearB && nearL) return 'sw';
+  if(nearB && nearR) return 'se';
+  if(nearT && inX) return 'n';
+  if(nearB && inX) return 's';
+  if(nearL && inY) return 'w';
+  if(nearR && inY) return 'e';
+  if(p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1) return 'move';
+  return '';
+}
+/* 拖拽期间的框状态：start 是 pointerdown 时的快照（必须带 frac / pxW / refW）。
+   为什么不能直接把 moveBox / resizeBox 的结果当新框：
+   它们是"只有 x/y/w/h"的纯函数，**既会丢 frac，也不会按比例修另一边**——
+   而「占同比例最大块的多少」这个量（frac）正是换图 / 批量时唯一能跨图还原尺寸的尺子。
+   做法：① 用纯函数按位移得到目标尺寸；② 用 withBoxSize 把框钉回"严格符合比例"的尺寸
+   与位置，并把 frac 重算出来（纯函数，不改传入的 start）。 */
+function dragCropBox(start, mode, handle, dx, dy, ratio, W, H){
+  // 移动：只变位置、尺寸不变，frac 必须原样跟着走（moveBox 是纯 x/y/w/h 函数，会丢它）
+  if(mode === 'move') return carryBoxMeta(start, moveBox(start, dx, dy));
+  var lock = (ratio > 0 && W > 0 && H > 0) ? (ratio * H / W) : 0;
+  var moved = resizeBox(start, handle, dx, dy, lock);
+  if(!(ratio > 0) || !(W > 0) || !(H > 0)){
+    return fitBoxToRatio(moved, 0, W, H);
+  }
+  var max = maxRatioSize(ratio, W, H);
+  var cls = String(handle || 'se');
+  var east = cls.indexOf('e') >= 0, west = cls.indexOf('w') >= 0;
+  var north = cls.charAt(0) === 'n', south = cls.charAt(0) === 's';
+  var s = 1;
+  if(east) s = moved.w / Math.max(1e-6, start.w);
+  else if(west){
+    var right = start.x + start.w;
+    s = (right - moved.x) / Math.max(1e-6, start.w);
+  } else if(north){
+    var bottom = start.y + start.h;
+    s = (bottom - moved.y) / Math.max(1e-6, start.h);
+  } else if(south) s = moved.h / Math.max(1e-6, start.h);
+  // 尺寸直接用「像素」表达并按 ratio 反推高度 —— 绝不出现 w/h 各自独立取整导致的比例偏差。
+  // ⚠️ 两个坑（都踩过）：
+  //   ① 别用"最小归一化边长 0.02"当地板：在 800×600 上会变成 {0.02,0.02}，不是 1:1；
+  //   ② 宽度和高度不能各自独立 clamp：一顶到边界比例就崩（600×1000 上出 12×20）。
+  // 地板走 minRatioWidth：同时保证「w ≥ 2% 宽」和「h = w/ratio 向上取整后仍 ≥ 2% 高」。
+  var refW = (start.refW > 0) ? start.refW : W;
+  var refH = (start.refH > 0) ? start.refH : H;
+  var needW = Math.max(W * 0.02, refW * 0.02);
+  var needH = Math.max(H * 0.02, refH * 0.02);
+  var minW = Math.min(max.w, Math.max(1, minRatioWidth(ratio, needW, needH)));
+  var desireW = (east || west) ? (start.w * W * s) : ((start.h * H * s) * ratio);
+  var fitW = Math.round(clampNum(desireW, minW, max.w));
+  var fitH = Math.round(fitW / ratio);
+  if(fitH > max.h){
+    fitH = Math.max(1, Math.round(max.h));
+    fitW = Math.max(1, Math.round(fitH * ratio));
+  }
+  if(fitH < 1 || fitW < 1){ fitW = minW; fitH = Math.max(1, Math.round(fitW / ratio)); }
+  var fitted = withBoxSize(start, fitW / W, fitH / H);
+  // 尺寸的权威值用**像素**存（pxW）：大图上归一化的 0.02 比 1 像素还粗，
+  // 只靠归一化宽高传递会在最小尺寸处把比例夹歪。
+  fitted.pxW = fitW;
+  fitted.frac = clampNum(fitW / max.w, 1 / Math.max(1, max.w), 1);
+  if(start.refW > 0){ fitted.refW = start.refW; fitted.refH = start.refH; }
+  // 位置：拖哪条边就让哪条边跟着鼠标走（角手柄两条边都跟）
+  if(east) fitted.x = start.x;
+  else if(west) fitted.x = start.x + start.w - fitted.w;
+  if(north) fitted.y = start.y + start.h - fitted.h;
+  else if(south) fitted.y = start.y;
+  fitted.x = Math.max(0, Math.min(1 - fitted.w, fitted.x));
+  fitted.y = Math.max(0, Math.min(1 - fitted.h, fitted.y));
+  return fitted;
+}
+function bindCropEditor(){
+  var cv = $('cropcv'), cbox = $('cropcbox');
+  function down(e){
+    if(busy || !cropActive() || !cropSt.hasItem || !cropSt.box) return;
+    var hp = '';
+    var hEl = e.target && e.target.closest ? e.target.closest('i[data-h]') : null;
+    if(hEl) hp = hEl.getAttribute('data-h');
+    else hp = cropHitTest(cropPointerPos(e));
+    if(!hp) return;
+    e.preventDefault();
+    cropSt.pointerId = e.pointerId;
+    cropSt.mode = (hp === 'move') ? 'move' : 'resize';
+    cropSt.handle = hp;
+    // ★ 起点快照必须带上 frac / pxW / refW（withBoxSize 是纯函数，靠它保住这些元信息）
+    cropSt.start = carryBoxMeta(cropSt.box, { x: cropSt.box.x, y: cropSt.box.y, w: cropSt.box.w, h: cropSt.box.h });
+    cropSt.start.refW = cropCanvasBox.W;
+    cropSt.start.refH = cropCanvasBox.H;
+    cropSt.sx = e.clientX; cropSt.sy = e.clientY;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+    if(cbox && cbox.setPointerCapture){ try{ cbox.setPointerCapture(e.pointerId); }catch(err){} }
+  }
+  function move(e){
+    if(cropSt.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    var rect = cv.getBoundingClientRect();
+    if(!rect.width || !rect.height) return;
+    var dx = (e.clientX - cropSt.sx) / rect.width;
+    var dy = (e.clientY - cropSt.sy) / rect.height;
+    // ★ 每次都以 pointerdown 的快照为基准（不能拿当前框当基准，否则位移会被逐次累积）
+    cropSt.box = dragCropBox(cropSt.start, cropSt.mode, cropSt.handle, dx, dy,
+                             cropTargetRatio(), cropCanvasBox.W, cropCanvasBox.H);
+    stashCurrentBox();
+    drawCropOverlay();
+    updateCropInfo();
+  }
+  function up(e){
+    if(cropSt.pointerId !== e.pointerId) return;
+    cropSt.pointerId = -1; cropSt.mode = ''; cropSt.handle = '';
+    try{ cv.releasePointerCapture(e.pointerId); }catch(err){}
+    stashCurrentBox();
+    updateCropInfo();
+    saveSettingsSoon();
+  }
+  cv.addEventListener('pointerdown', down);
+  cv.addEventListener('pointermove', move);
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+  if(cbox){
+    cbox.addEventListener('pointerdown', down);
+    cbox.addEventListener('pointermove', move);
+    cbox.addEventListener('pointerup', up);
+    cbox.addEventListener('pointercancel', up);
+  }
+}
+/* 模式 / 比例 / 每张单独 变化后的界面联动 */
+function refreshEditor(){
+  var edge = !cropActive();
+  if(edge){ stashCurrentBox(); }
+  $('cropBox').classList.toggle('hidden', edge);
+  $('cropEdge').classList.toggle('hidden', !edge);
+  $('cropCustomWrap').classList.toggle('hidden', segVal('cropRatio') !== 'custom');
+  var per = $('perItem').checked;
+  $('perItemHint').innerHTML = per
+    ? '已打开：<b>每张图各自记一个裁剪框</b>，切图时会各自恢复。适合逐张精修；新图第一次打开时用「整队框」当起点。'
+    : '现在：<b>整队统一裁剪</b> —— 你拖一次框，全队每张都按同样的相对位置裁（批量统一裁最省事）。';
+  // 输出格式提示（如实说清无损 / 有损）
+  var f = segVal('outFmt') || 'keep';
+  $('outQWrap').classList.toggle('hidden', f === 'png');
+  $('lossHint').innerHTML = lossExplain();
+  // 后缀示例
+  var it = selItem();
+  var sfx = $('suffix').value;
+  var ex = it ? (it.base + sfx + '.' + extOfFmt(outFmtOf(it))) : ('照片' + sfx + '.jpg');
+  $('suffixHint').innerHTML = '例如原图 <b>照片.jpg</b> → 输出 <b>' + esc(ex) + '</b>；留空就是不加后缀。';
+  renderCropEditor();
+  saveSettingsSoon();
+}
+/* 如实说明裁剪的损失情况（裁剪本身是像素级搬运、不重采样） */
+function lossExplain(){
+  var f = segVal('outFmt') || 'keep';
+  var head = '<b>裁剪本身是像素级搬运、不重采样</b>，不会让画面变糊。';
+  if(f === 'keep') return head + ' 保持原格式：PNG 源不变差；JPG / WebP 源虽然要重新存一次，但画质滑块不生效时用同格式原码流，画质基本不动。';
+  if(f === 'png') return head + ' 输出 PNG：<b>不新增损失</b>（PNG 是无损容器）。但注意 —— 如果原图本来是 JPG / WebP，它在当初被压缩那一刻就已经掉过画质了，转成 PNG 只是「不再新增」，救不回已丢的细节。';
+  return head + ' 输出 ' + (f === 'jpeg' ? 'JPG' : 'WebP') + '：这是有损格式，<b>必然再掉一次画质</b>（由上面的画质滑块决定），而且救不回原图已经丢掉的细节。';
+}
+
+/* ==========================================================================
+   单张处理（只裁 + 编码，不重采样）
+   ========================================================================== */
+function renderCrop(src, srcW, srcH, opt){
+  var plan = geometryPlan(null, { crop: opt }, srcW, srcH);
+  if(plan.crop.mode !== 'crop'){
+    var c0 = newCanvas(srcW, srcH);
+    var x0 = c0.getContext('2d');
+    x0.drawImage(src, 0, 0, srcW, srcH);
+    return { canvas: c0, w: srcW, h: srcH };
+  }
+  var r = plan.crop.rect;
+  var c = newCanvas(r.w, r.h);
+  var ctx = c.getContext('2d');
+  ctx.drawImage(src, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+  return { canvas: c, w: r.w, h: r.h, rect: r };
+}
+function processItem(it, opt){
+  return decodeFile(it.file).then(function(bmp){
+    var srcW = bmp.width, srcH = bmp.height;
+    var tgtFmt = outFmtOf(it);
+    var out = renderCrop(bmp, srcW, srcH, opt);
+    releaseBmp(bmp);
+    var type = typeOf(tgtFmt);
+    var q = qualityOf();
+    var isPng = (type === 'image/png');
+    return canvasToBlob(out.canvas, type, isPng ? undefined : q).then(function(blob){
+      releaseCanvas(out.canvas);
+      return blob.arrayBuffer().then(function(buf){
+        return { name: it.base + ($('suffix').value || '') + '.' + extOfFmt(tgtFmt),
+                 data: new Uint8Array(buf), w: out.w, h: out.h, fmt: tgtFmt, size: buf.byteLength };
+      });
+    });
+  });
+}
+
+/* ==========================================================================
+   批量 / 单张
+   ========================================================================== */
+function downloadBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);
+}
+var MAX_ZIP_BYTES = 1200 * 1024 * 1024;
+/* 打包超限时给**具体**的分批建议：份数按上限向上取整，张数按均分给 */
+function zipBatchAdvice(totalBytes, count, maxBytes){
+  var n = Math.max(1, Math.round(count));
+  var lim = maxBytes || MAX_ZIP_BYTES;
+  var batches = Math.max(2, Math.ceil(totalBytes / lim));
+  var per = Math.max(1, Math.ceil(n / batches));
+  batches = Math.max(2, Math.ceil(n / per));
+  return { batches: batches, per: per };
+}
+function resetItemsOutput(){
+  for(var k = 0; k < items.length; k++){ items[k].status = ''; items[k].stErr = false; items[k].outSize = 0; items[k].outW = 0; items[k].outH = 0; }
+}
+function runAll(){
+  if(busy || !items.length) return;
+  var o = readOpts();
+  if(o.mode === 'box' && !o.box){ flash('先选一张图片，把裁剪框拖好再开始。', 'warn'); return; }
+  busy = true; syncButtons(); resetItemsOutput();
+  renderThumbs(); renderList();
+  var files = [], rows = [], fail = 0, i = 0, total = items.length;
+  var sumBefore = 0;
+  for(var s = 0; s < items.length; s++) sumBefore += items[s].file.size;
+  function loop(){
+    if(i >= total){
+      busy = false; syncButtons();
+      if(!files.length){ flash('没有产出任何文件。', 'err'); setProgress(0, '处理失败。'); return; }
+      var totalBytes = 0;
+      for(var m = 0; m < files.length; m++) totalBytes += files[m].data.length;
+      if(totalBytes > MAX_ZIP_BYTES){
+        setProgress(0, '文件总量过大，没有打包。');
+        var adv = zipBatchAdvice(totalBytes, files.length);
+        showMsg('emsg', 'emsgtxt',
+          '这批共 ' + files.length + ' 张、合计 ' + fmtSize(totalBytes) + '，一次打包会吃太多内存。建议分 ' + adv.batches
+          + ' 批处理（每批约 ' + adv.per + ' 张），或者改用 JPG / WebP + 调低画质把体积压下来。', 'err');
+        return;
+      }
+      setProgress(1, '正在打包 ZIP（' + files.length + ' 张）…');
+      setTimeout(function(){
+        var blob = buildZip(files);
+        var zipName = 'crop-' + files.length + '张.zip';
+        downloadBlob(blob, zipName);
+        var after = totalBytes;
+        var summary = '共 <b>' + total + '</b> 张 ｜ 成功 <b>' + (total - fail) + '</b> ｜ 失败 <b>' + fail + '</b> ｜ 体积 '
+          + fmtSize(sumBefore) + ' → <b>' + fmtSize(after) + '</b>（' + pctText(sumBefore, after) + '）';
+        $('summary').innerHTML = summary + '。<br>输出：' + esc(zipName);
+        setProgress(1, '打包完成：' + zipName + '（' + fmtSize(blob.size) + '），浏览器应该已经开始下载了。');
+        flash('全部处理完了：' + (total - fail) + ' 张成功' + (fail ? ('、' + fail + ' 张失败') : '') + '。', fail ? 'warn' : 'ok');
+        files.length = 0;
+      }, 30);
+      return;
+    }
+    var it = items[i];
+    $('count').textContent = '正在处理第 ' + (i + 1) + ' / 共 ' + total + ' 张…';
+    setProgress((i + 0.2) / total, '正在处理第 ' + (i + 1) + ' / 共 ' + total + ' 张…');
+    processItem(it, cropOptsFor(it)).then(function(res){
+      files.push({ name: res.name, data: res.data });
+      rows.push({ name: res.name, ok: true, before: it.file.size, after: res.data.length });
+      it.outSize = res.data.length;
+      it.outW = res.w; it.outH = res.h;
+      it.status = fmtSize(res.data.length);
+      it.stErr = false;
+      i++;
+      setThumbStatus(it); updateRow(it);
+      setTimeout(loop, 0);
+    }).catch(function(err){
+      rows.push({ name: it.name, ok: false, before: it.file.size, after: 0 });
+      it.status = '失败'; it.stErr = true;
+      fail++; i++;
+      setThumbStatus(it); updateRow(it);
+      setTimeout(loop, 0);
+    });
+  }
+  setProgress(0, '开始处理…');
+  loop();
+}
+function runOne(){
+  if(busy) return;
+  var it = selItem();
+  if(!it){ flash('先在缩略图里点一张要下载的图。', 'err'); return; }
+  if(!cropSt.box){ flash('先选一张图片，把裁剪框拖好再开始。', 'warn'); return; }
+  busy = true; syncButtons();
+  setProgress(0.15, '正在处理：' + it.name);
+  processItem(it, cropOptsFor(it)).then(function(res){
+    busy = false; syncButtons();
+    it.outSize = res.data.length;
+    it.outW = res.w; it.outH = res.h;
+    it.status = fmtSize(res.data.length);
+    it.stErr = false;
+    setThumbStatus(it); updateRow(it);
+    var blob = new Blob([res.data], { type: 'application/octet-stream' });
+    downloadBlob(blob, res.name);
+    setProgress(1, '已下载：' + res.name + '（' + fmtSize(blob.size) + '，' + res.w + ' × ' + res.h + '）');
+    flash('已下载这一张：' + res.name, 'ok');
+    res.data = null;
+  }).catch(function(err){
+    busy = false; syncButtons();
+    setProgress(0, '处理失败。');
+    flash('这一张处理失败了：' + (err && err.message ? err.message : '未知原因'), 'err');
+  });
+}
+
+/* ==========================================================================
+   记住上次设置（localStorage；try/catch 兜住隐私模式 / file:// 的异常）
+   ========================================================================== */
+var SETTINGS_KEY = 'img-crop.settings.v1';
+/* 分段控件的默认值（它们不是 value，而是"哪个按钮选中"） */
+var FACTORY_SEG = { cropMode: 'box', cropRatio: 'orig', outFmt: 'keep' };
+function lsGet(){ try{ return window.localStorage; }catch(e){ return null; } }
+function loadStoredSettings(){
+  var ls = lsGet();
+  if(!ls) return null;
+  try{
+    var raw = ls.getItem(SETTINGS_KEY);
+    if(!raw) return null;
+    var obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj : null;
+  }catch(e){ return null; }
+}
+function forgetSettings(){
+  var ls = lsGet();
+  if(!ls) return;
+  try{ ls.removeItem(SETTINGS_KEY); }catch(e){}
+}
+function settingsSnapshot(){
+  var st = { ctrls: {}, segs: {}, row: null };
+  Object.keys(FACTORY).forEach(function(id){
+    var el = $(id);
+    if(!el) return;
+    st.ctrls[id] = (id === 'perItem') ? !!el.checked : String(el.value);
+  });
+  // ⚠️ 分段控件（拖动框 / 四周裁边、比例档、目标格式）也必须存 ——
+  //    它们不是 input.value，漏了就会出现"明明选了 WebP，重新打开变回保持原格式"
+  Object.keys(FACTORY_SEG).forEach(function(id){
+    var v = segVal(id);
+    if(v) st.segs[id] = v;
+  });
+  // 裁剪框：连 frac / pxW / refW / refH 一起存，恢复时按当前图重新贴合
+  try{ st.row = cropSt.box ? { x:cropSt.box.x, y:cropSt.box.y, w:cropSt.box.w, h:cropSt.box.h,
+                               frac:cropSt.box.frac, pxW:cropSt.box.pxW, refW:cropSt.box.refW, refH:cropSt.box.refH } : null; }catch(e){ st.row = null; }
+  return st;
+}
+var saveTimer = null;
+function saveSettingsSoon(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    saveTimer = null;
+    var ls = lsGet();
+    if(!ls) return;
+    try{ ls.setItem(SETTINGS_KEY, JSON.stringify(settingsSnapshot())); }catch(e){}
+  }, 400);
+}
+function restoreSettings(){
+  var st = loadStoredSettings();
+  if(!st) return false;
+  if(st.ctrls){
+    Object.keys(st.ctrls).forEach(function(id){
+      if(FACTORY[id] === undefined || !$(id)) return;
+      if(id === 'perItem') $(id).checked = !!st.ctrls[id];
+      else $(id).value = st.ctrls[id];
+    });
+  }
+  // 分段按钮
+  if(st.segs){
+    Object.keys(st.segs).forEach(function(id){
+      if(FACTORY_SEG[id] !== undefined && st.segs[id]) setSeg(id, st.segs[id]);
+    });
+  }
+  // 兼容早期只存了 ctrls 的版本（那时分段控件可能被塞进 ctrls）
+  ['cropMode', 'cropRatio', 'outFmt'].forEach(function(id){
+    var v = st.ctrls && st.ctrls[id];
+    if(v) setSeg(id, v);
+  });
+  // ★ 存下来的框只放到 pendingBox，绝不当场塞进 cropSt.box（那会缺 frac / 尺寸对不上）
+  if(st.row) pendingBox = st.row;
+  syncRangeLabels();
+  return true;
+}
+var pendingBox = null;
+function syncRangeLabels(){
+  ['cropEdgePx', 'outQ'].forEach(function(id){
+    var el = $(id), out = $(id + '-v');
+    if(el && out) out.textContent = el.value + (el.getAttribute('data-unit') || '');
+  });
+}
+/* 恢复裁剪框：走 setCropBox / 贴合那条路，按**当前这张图**重算 */
+function restoreBoxIfAny(W, H){
+  if(!pendingBox) return false;
+  var b = pendingBox;
+  pendingBox = null;
+  var keep = carryBoxMeta(b, { x: b.x, y: b.y, w: b.w, h: b.h });
+  if(b.refW > 0){ keep.refW = b.refW; keep.refH = b.refH; }
+  setCropBox(keep, true);
+  return true;
+}
+/* 全部恢复默认（并清除记忆，不动图片队列） */
+function resetAll(){
+  Object.keys(FACTORY).forEach(function(id){
+    var el = $(id);
+    if(!el) return;
+    if(id === 'perItem') el.checked = !!FACTORY[id];
+    else el.value = FACTORY[id];
+  });
+  setSeg('cropMode', 'box'); setSeg('cropRatio', 'orig'); setSeg('outFmt', 'keep');
+  cropSt.box = null; cropSt.lastRatio = undefined; cropSt.srcW = 0; cropSt.srcH = 0;
+  cropSt.pendingSnap = true; cropSt.assignedId = 0;
+  for(var i = 0; i < items.length; i++) items[i].box = null;   // per-item 的框也清掉
+  pendingBox = null;
+  forgetSettings();
+  syncRangeLabels();
+  refreshEditor();
+}
+
+/* ==========================================================================
+   事件绑定 / 启动
+   ========================================================================== */
+function bindSeg(id, onPick){
+  var box = $(id);
+  if(!box) return;
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || busy) return;
+    var kids = box.querySelectorAll('button');
+    for(var i = 0; i < kids.length; i++) kids[i].classList.remove('on');
+    b.classList.add('on');
+    onPick(b.getAttribute('data-v'));
+  });
+}
+function bindAll(){
+  $('drop').addEventListener('click', function(){ if(!busy) $('file').click(); });
+  $('file').addEventListener('change', function(){ addFiles(this.files); this.value = ''; });
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(busy) return;
+    var dt = e.dataTransfer;
+    if(dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+  window.addEventListener('paste', function(e){
+    if(busy) return;
+    var its = (e.clipboardData && e.clipboardData.items) || [];
+    var fs = [];
+    for(var i = 0; i < its.length; i++){
+      if(its[i].kind !== 'file') continue;
+      var f = its[i].getAsFile();
+      if(f) fs.push(f);
+    }
+    if(fs.length) addFiles(fs);
+  });
+  $('thumbs').addEventListener('click', function(e){
+    var del = e.target.closest('[data-del]');
+    if(del){ e.stopPropagation(); if(!busy) removeItem(+del.getAttribute('data-del')); return; }
+    var t = e.target.closest('.thumb');
+    if(t && !busy) selectItem(+t.getAttribute('data-id'));
+  });
+  $('list').addEventListener('click', function(e){
+    var r = e.target.closest('.row');
+    if(r && !busy) selectItem(+r.getAttribute('data-id'));
+  });
+  $('clear').addEventListener('click', function(){ if(!busy) clearAll(); });
+  document.addEventListener('click', function(e){
+    var d = e.target.closest('[data-dismiss]');
+    if(!d) return;
+    var box = $(d.getAttribute('data-dismiss'));
+    if(box) box.classList.add('hidden');
+  });
+
+  bindSeg('cropMode', function(){ refreshEditor(); });
+  bindSeg('cropRatio', function(){ snapCropBoxMax(); refreshEditor(); });
+  bindSeg('outFmt', function(){ refreshEditor(); });
+  bindCropEditor();
+
+  $('cropCenter').addEventListener('click', function(){
+    if(!cropSt.box || !cropCanvasBox.W) return;
+    var b = cropSt.box;
+    b.x = Math.max(0, (1 - b.w) / 2);
+    b.y = Math.max(0, (1 - b.h) / 2);
+    stashCurrentBox(); drawCropOverlay(); updateCropInfo(); saveSettingsSoon();
+  });
+  $('cropReset').addEventListener('click', function(){
+    cropSt.box = cropCanvasBox.W ? defaultCropBox(cropCanvasBox.W, cropCanvasBox.H) : null;
+    cropSt.lastRatio = cropTargetRatio();
+    stashCurrentBox(); drawCropOverlay(); updateCropInfo(); saveSettingsSoon();
+  });
+  $('cropUseAll').addEventListener('click', function(){
+    var b = cropSt.box;
+    setCropBox(b ? withBoxSize(b, 1, 1) : { x:0, y:0, w:1, h:1 }, false);
+    saveSettingsSoon();
+  });
+
+  // 所有输入控件：改了就刷新编辑器 / 提示
+  var inputs = document.querySelectorAll('input,select,textarea');
+  for(var i = 0; i < inputs.length; i++){
+    (function(el){
+      if(el.type === 'file') return;
+      var ev = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(ev, function(){
+        if(el.id === 'cropCw' || el.id === 'cropCh'){ snapCropBoxMax(); }
+        if(el.id === 'perItem'){
+          // 切粒度之前，先把编辑器里那张框还给"它当初属于的那张图"，
+          // 然后重设归属到当前选中的图（打开时顺手给它记一份，作为逐张精修的起点）
+          storeBoxForSel();
+          if(!el.checked) cropSt.assignedId = 0;
+        }
+        syncRangeLabels();
+        refreshEditor();
+      });
+    })(inputs[i]);
+  }
+  $('runAll').addEventListener('click', runAll);
+  $('runOne').addEventListener('click', runOne);
+  $('resetAll').addEventListener('click', function(){
+    if(busy) return;
+    resetAll();
+    flash('已恢复出厂设置（裁剪框、比例、格式、后缀都回默认），本机记住的设置也一并清除。图片队列没有动。', 'ok');
+  });
+  window.addEventListener('resize', function(){ renderCropEditor(); });
+  window.addEventListener('beforeunload', function(e){
+    if(busy){ e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+/* ---------- 启动 ---------- */
+// 顺序：先恢复设置（写 DOM 值）→ 再绑定 → 再算界面
+var restored = restoreSettings();
+bindAll();
+syncRangeLabels();
+refreshEditor();
+updateCount();
+syncButtons();
+setProgress(0, '还没有开始处理。');
+if(restored) flash('已恢复上次用的设置（右下角「恢复默认」可以清掉）。', 'ok');
+
+/* 自动化验收入口（**仅供自动化验收，无任何写权限**：只读访问器 + 引擎函数引用）。
+   用途：真机里核对「界面显示的数字 == 导出实测尺寸」，以及跑几何 / ZIP 的回归。 */
+if(typeof globalThis !== 'undefined'){
+  globalThis.__imgCropTest = {
+    items: function(){ return items; },
+    readOpts: function(it){ return readOpts(it); },
+    cropOptsFor: cropOptsFor,
+    processItem: processItem,
+    cropRect: cropRect,
+    selectItem: selectItem,
+    runAll: runAll,
+    runOne: runOne,
+    setCropBox: setCropBox,
+    resetAll: resetAll,
+    zipBatchAdvice: zipBatchAdvice,
+    cropInfoHTML: function(){ return $('cropInfo').innerHTML; },
+    cropBoxRaw: function(){ return cropSt.box; },
+    setCropRaw: function(b){ cropSt.box = b; },
+    settingsSnapshot: settingsSnapshot,
+    forgetSettings: forgetSettings,
+    loadStoredSettings: loadStoredSettings,
+    FACTORY: FACTORY,
+    /* 编辑器预览的状态：验证"切图后旧预览立刻作废"这件事。
+       切图时新预览是异步解码的，中间那段窗口里 pvSrc 还是上一张的画布 ——
+       如果没作废它，就会拿新图的框按上一张的画布尺寸去归一化，框当场被算歪
+       （真机上表现为"每张单独裁剪不生效 / 拖小的框又变大"）。 */
+    previewState: function(){ return { id: pvSrcId, selId: selId, w: pvSrc ? pvSrc.width : 0, h: pvSrc ? pvSrc.height : 0 }; },
+    // 几何纯函数的引用：验收脚本要靠它们复算（只读，不会改页面状态）
+    fitBoxToRatio: fitBoxToRatio,
+    lockBoxToRatio: lockBoxToRatio,
+    refitBoxToRatio: refitBoxToRatio,
+    withBoxSize: withBoxSize,
+    moveBox: moveBox,
+    resizeBox: resizeBox,
+    dragCropBox: dragCropBox,
+    carryBoxMeta: carryBoxMeta,
+    maxRatioSize: maxRatioSize,
+    minRatioWidth: minRatioWidth,
+    normToRect: normToRect,
+    rectToNorm: rectToNorm,
+    typeOf: typeOf,
+    extOfFmt: extOfFmt,
+    fmtOfName: fmtOfName,
+    buildZip: buildZip
+  };
+}
+
+})();
+</script>
+</body>
+</html>

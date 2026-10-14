@@ -1,0 +1,994 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>平台尺寸助手 · 查尺寸 / 裁图 / 一图多出</title>
+<style>
+:root{
+  --bg:#f4f6fb;
+  --card:#ffffff;
+  --ink:#1f2233;
+  --ink2:#565c74;
+  --ink3:#8b90a6;
+  --line:#e6e8f1;
+  --line2:#f0f1f7;
+  --brand:#5a5ad6;
+  --brand2:#7b6bf0;
+  --brand-soft:#eeeefd;
+  --ok:#0f9d58;
+  --ok-soft:#e9f8f0;
+  --warn:#b56b12;
+  --warn-soft:#fff5e6;
+  --radius:14px;
+  --shadow:0 1px 2px rgba(30,34,60,.05),0 8px 22px rgba(30,34,60,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+  background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%;
+}
+.app{max-width:1060px;margin:0 auto;padding:18px 16px 60px}
+.hero{padding:10px 2px 14px}
+.hero h1{font-size:24px;margin:0 0 6px;letter-spacing:.5px}
+.hero .sub{margin:0;color:var(--ink2);font-size:14px}
+.hero .kbd{background:#fff;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px;color:var(--ink2)}
+.tabs{display:flex;gap:8px;overflow-x:auto;padding:4px 0 12px;-webkit-overflow-scrolling:touch}
+.tab{
+  flex:0 0 auto;border:1px solid var(--line);background:#fff;color:var(--ink2);
+  padding:9px 16px;border-radius:999px;font-size:14px;font-weight:600;cursor:pointer;
+  font-family:inherit;transition:.15s;white-space:nowrap;
+}
+.tab:hover{border-color:#cfd2e4}
+.tab.is-on{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(90,90,214,.28)}
+.panel{display:none}
+.panel.is-on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px;box-shadow:var(--shadow)}
+.card h2{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:8px}
+.card h2::before{content:"";width:4px;height:15px;border-radius:2px;background:linear-gradient(180deg,var(--brand),var(--brand2))}
+.input{
+  font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;width:100%;outline:none;transition:.15s;
+}
+.input:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.input.num{width:96px;text-align:center;font-variant-numeric:tabular-nums}
+.row{display:flex;align-items:center;gap:10px}
+.row.wrap{flex-wrap:wrap}
+.grow{flex:1 1 auto}
+.sp{height:10px}
+.muted{color:var(--ink3)}
+.small{font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0 8px}
+.chip{
+  border:1px solid var(--line);background:#fff;color:var(--ink2);border-radius:999px;
+  padding:6px 13px;font-size:13px;cursor:pointer;font-family:inherit;transition:.15s;
+}
+.chip:hover{border-color:#cfd2e4}
+.chip.is-on{background:var(--brand-soft);border-color:#c9c9f6;color:var(--brand);font-weight:700}
+.btn{
+  font:inherit;font-weight:700;cursor:pointer;border-radius:10px;padding:10px 18px;
+  border:1px solid var(--line);background:#fff;color:var(--ink);transition:.15s;
+}
+.btn:hover{border-color:#cfd2e4}
+.btn.primary{background:linear-gradient(135deg,var(--brand),var(--brand2));color:#fff;border-color:transparent;box-shadow:0 4px 12px rgba(90,90,214,.25)}
+.btn.primary:disabled{opacity:.5;box-shadow:none;cursor:not-allowed}
+.btn.sm{padding:7px 12px;font-size:13px;border-radius:9px}
+.mini{
+  font:inherit;font-size:13px;cursor:pointer;border:1px solid var(--line);background:#fff;
+  color:var(--ink2);border-radius:9px;padding:6px 11px;transition:.15s;
+}
+.mini:hover{border-color:#cfd2e4;color:var(--brand)}
+.pill{
+  display:inline-block;background:var(--brand-soft);color:var(--brand);border-radius:999px;
+  padding:3px 11px;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.pill.gray{background:#f2f3f9;color:var(--ink2)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.ok{background:var(--ok-soft);color:var(--ok)}
+.hidden{display:none !important}
+.banner{background:var(--brand-soft);border:1px solid #dcdcfb;color:var(--brand);border-radius:10px;padding:9px 12px;font-size:13.5px;margin-bottom:12px;font-weight:600}
+
+/* 列表 */
+.list{display:flex;flex-direction:column;gap:10px}
+.item{
+  background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  display:flex;gap:12px;align-items:flex-start;box-shadow:var(--shadow);transition:.15s;
+}
+.item:hover{border-color:#d5d7e8}
+.item .main{flex:1 1 auto;min-width:0}
+.item .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.item .use{font-weight:700;font-size:15px}
+.tag{font-size:12px;font-weight:700;color:#fff;border-radius:6px;padding:2px 8px;white-space:nowrap}
+.item .size{font-size:19px;font-weight:800;letter-spacing:.4px;font-variant-numeric:tabular-nums;margin:2px 0 4px}
+.item .size span{font-size:13px;font-weight:600;color:var(--ink3);margin-left:6px;letter-spacing:0}
+.item .note{font-size:13px;color:var(--ink2);margin:3px 0 0}
+.item .src{font-size:12px;color:var(--ink3);margin-top:5px}
+.item .act{flex:0 0 auto;padding-top:22px}
+.item.compact{padding:9px 12px;align-items:center}
+.item.compact .act{padding-top:0}
+.item.compact .use{font-size:14px;font-weight:600}
+.empty{text-align:center;color:var(--ink3);padding:34px 10px;font-size:14px}
+
+/* 上传区 */
+.drop{
+  border:2px dashed #d3d6e8;border-radius:12px;background:#fafbff;padding:22px 14px;
+  text-align:center;cursor:pointer;transition:.15s;
+}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand-soft)}
+.drop .ico{font-size:26px;line-height:1}
+.drop .t1{font-weight:700;margin:6px 0 3px}
+.orig{
+  margin-top:12px;background:#fafbff;border:1px solid var(--line2);border-radius:10px;
+  padding:10px 12px;font-size:13.5px;display:flex;flex-wrap:wrap;gap:8px 18px;
+}
+.orig b{font-weight:700}
+.orig .fname{word-break:break-all}
+
+/* 预览 */
+.preview{
+  border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff;
+  display:flex;justify-content:center;padding:10px;
+  background-image:
+    linear-gradient(45deg,#eef0f7 25%,transparent 25%),
+    linear-gradient(-45deg,#eef0f7 25%,transparent 25%),
+    linear-gradient(45deg,transparent 75%,#eef0f7 75%),
+    linear-gradient(-45deg,transparent 75%,#eef0f7 75%);
+  background-size:18px 18px;
+  background-position:0 0,0 9px,9px -9px,-9px 0;
+}
+.preview canvas{max-width:100%;height:auto;display:block;border-radius:4px;box-shadow:0 2px 10px rgba(30,34,60,.12)}
+.anchors{display:flex;gap:8px;flex-wrap:wrap}
+.sliderline{display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink2);margin:10px 0 4px;flex-wrap:wrap}
+input[type=range]{flex:1 1 160px;min-width:120px;accent-color:var(--brand);height:24px}
+.radio{display:flex;align-items:center;gap:7px;font-size:14px;color:var(--ink2);cursor:pointer}
+.radio input{accent-color:var(--brand);width:16px;height:16px}
+.fld{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink2)}
+.x{color:var(--ink3);font-weight:700}
+.tip{color:var(--ink3);font-size:13px;margin:4px 2px 0}
+.bar{height:8px;background:#eceef7;border-radius:999px;overflow:hidden;margin:12px 0 8px}
+.bar i{display:block;height:100%;width:0;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand2));transition:width .2s}
+.foot{color:var(--ink3);font-size:12.5px;text-align:center;margin:22px 0 0;line-height:1.9}
+.toast{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(10px);
+  background:#262a40;color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;
+  box-shadow:0 8px 26px rgba(20,22,40,.3);opacity:0;pointer-events:none;transition:.22s;z-index:99;max-width:88vw;text-align:center;
+}
+.toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+@media (max-width:560px){
+  .app{padding:12px 11px 48px}
+  .hero h1{font-size:20px}
+  .hero .sub{font-size:13px}
+  .card{padding:13px;border-radius:12px}
+  .tab{padding:8px 13px;font-size:13.5px}
+  .item{flex-direction:column;gap:8px}
+  .item.compact{flex-direction:row;align-items:center;gap:8px}
+  .item.compact .main{font-size:13px}
+  .item .act{padding-top:0;width:100%}
+  .item .act .btn{width:100%}
+  .item .size{font-size:17px}
+  .input.num{width:76px}
+  .btn{padding:11px 16px}
+  .btn.wfull{width:100%}
+  .sliderline{gap:8px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="hero">
+    <h1>平台尺寸助手</h1>
+    <p class="sub">查平台尺寸 → 按尺寸裁切 → 一图多出。全部在你自己的浏览器里完成，<b>图片不上传、断网也能用</b>。</p>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab is-on" type="button" data-tab="t1">① 尺寸速查表</button>
+    <button class="tab" type="button" data-tab="t2">② 按尺寸裁切</button>
+    <button class="tab" type="button" data-tab="t3">③ 一图多出</button>
+  </nav>
+
+  <!-- ================= ① 尺寸速查表 ================= -->
+  <section class="panel is-on" id="t1">
+    <div class="card">
+      <h2>找尺寸</h2>
+      <input class="input" type="search" id="q1" placeholder="搜平台或用途，例如：小红书 封面 / 头像 / 视频">
+      <div class="chips" id="platChips"></div>
+      <div class="row wrap">
+        <span class="pill gray" id="count1">共 0 条</span>
+        <button class="mini" type="button" id="reset1">重置筛选</button>
+      </div>
+    </div>
+    <div class="list" id="list1"></div>
+    <p class="tip">⚠️ 平台规则会变。表中数值为「常见参考值」，标了具体后台口径的才更接近官方；正式投放前请以各平台后台的提示为准。</p>
+  </section>
+
+  <!-- ================= ② 按尺寸裁切 ================= -->
+  <section class="panel" id="t2">
+    <div class="card">
+      <h2>1 · 选一张原图</h2>
+      <div class="drop" id="drop2">
+        <input type="file" accept="image/*" id="file2" class="hidden">
+        <div class="ico">🖼️</div>
+        <div class="t1">点击选择图片，或把图片拖到这里</div>
+        <div class="muted small">支持 JPG / PNG / WebP / GIF（取第一帧）；也可以按 Ctrl + V 直接粘贴</div>
+      </div>
+      <div class="orig hidden" id="orig2"></div>
+    </div>
+
+    <div class="card">
+      <h2>2 · 要裁成多大（像素）</h2>
+      <div class="banner hidden" id="carry"></div>
+      <div class="row wrap">
+        <label class="fld">宽 <input class="input num" type="number" id="tw" min="1" max="8000" step="1" value="900"></label>
+        <span class="x">×</span>
+        <label class="fld">高 <input class="input num" type="number" id="th" min="1" max="8000" step="1" value="383"></label>
+        <span class="pill" id="tinfo">900 × 383</span>
+      </div>
+      <div class="row wrap" style="margin-top:12px">
+        <span class="muted small">常用比例：</span>
+        <button class="mini" type="button" data-ratio="1:1">1:1</button>
+        <button class="mini" type="button" data-ratio="3:4">3:4 竖</button>
+        <button class="mini" type="button" data-ratio="4:3">4:3 横</button>
+        <button class="mini" type="button" data-ratio="9:16">9:16 竖</button>
+        <button class="mini" type="button" data-ratio="16:9">16:9 横</button>
+        <button class="mini" type="button" data-ratio="2.35:1">2.35:1 封面</button>
+      </div>
+      <p class="tip">点「① 尺寸速查表」里每条右边的按钮，会把平台 + 用途 + 尺寸一起带过来。</p>
+    </div>
+
+    <div class="card">
+      <h2>3 · 怎么裁</h2>
+      <div class="anchors" id="anchors">
+        <button class="chip is-on" type="button" data-anchor="center">居中</button>
+        <button class="chip" type="button" data-anchor="top">顶部</button>
+        <button class="chip" type="button" data-anchor="bottom">底部</button>
+        <button class="chip" type="button" data-anchor="left">左中</button>
+        <button class="chip" type="button" data-anchor="right">右中</button>
+      </div>
+      <label class="sliderline">放大 <input type="range" id="zoom" min="100" max="400" step="5" value="100"><span class="pill" id="zoomv">1.0×</span></label>
+      <p class="tip">100% = 按目标比例能裁到的最大范围（不放大）；往右拉 = 先放大再裁，主体更满，但原图小的时候会发虚。</p>
+      <div class="row wrap" style="margin-top:8px">
+        <span class="pill gray" id="cropinfo">裁切区域：—</span>
+        <span class="pill warn hidden" id="upwarn">目标比原图大，导出会被放大</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>4 · 看效果并导出</h2>
+      <div class="preview"><canvas id="cv" width="900" height="383"></canvas></div>
+      <div class="row wrap" style="margin-top:12px">
+        <label class="radio"><input type="radio" name="fmt" value="png" checked> PNG（清晰、可透明、体积大）</label>
+        <label class="radio"><input type="radio" name="fmt" value="jpg"> JPG（体积小、不支持透明）</label>
+      </div>
+      <label class="sliderline" id="qline">JPG 质量 <input type="range" id="quality" min="40" max="100" step="1" value="92"><span class="pill" id="qv">92</span></label>
+      <div class="row wrap" style="margin-top:10px">
+        <button class="btn primary wfull" type="button" id="export1">导出这张图</button>
+        <span class="pill gray" id="est">预计体积：—</span>
+      </div>
+      <p class="tip">导出会存到浏览器的「下载」文件夹，文件名自动带平台、用途和尺寸。</p>
+    </div>
+  </section>
+
+  <!-- ================= ③ 一图多出 ================= -->
+  <section class="panel" id="t3">
+    <div class="card">
+      <h2>1 · 原图</h2>
+      <div class="drop" id="drop3">
+        <input type="file" accept="image/*" id="file3" class="hidden">
+        <div class="ico">🖼️</div>
+        <div class="t1">点击选择图片，或把图片拖到这里</div>
+        <div class="muted small">和第 ② 步共用同一张图，哪边传都行</div>
+      </div>
+      <div class="orig hidden" id="orig3"></div>
+      <p class="tip">裁切方式沿用第 ② 步的设置：<span id="carry2">居中 · 1.0×</span>（想改就回 ② 调）</p>
+    </div>
+
+    <div class="card">
+      <h2>2 · 勾选想要的尺寸</h2>
+      <input class="input" type="search" id="q3" placeholder="搜平台或用途，快速缩小范围">
+      <div class="chips" id="platChips3"></div>
+      <div class="row wrap" style="margin-bottom:10px">
+        <button class="mini" type="button" id="selAll">全选当前筛选</button>
+        <button class="mini" type="button" id="selNone">清空选择</button>
+        <span class="pill gray" id="selCount">已选 0 条</span>
+      </div>
+      <div class="list" id="list3"></div>
+    </div>
+
+    <div class="card">
+      <h2>3 · 一次导出</h2>
+      <div class="row wrap">
+        <label class="radio"><input type="radio" name="bout" value="zip" checked> 打包成一个 ZIP（推荐，不会被浏览器拦）</label>
+        <label class="radio"><input type="radio" name="bout" value="one"> 逐个下载（需在浏览器弹窗里点「允许」）</label>
+      </div>
+      <p class="tip">输出格式与质量沿用第 ② 步：<span id="carry3">PNG</span></p>
+      <div class="row wrap" style="margin-top:10px">
+        <button class="btn primary wfull" type="button" id="run">开始批量裁切</button>
+      </div>
+      <div class="bar hidden" id="bar"><i></i></div>
+      <div class="small muted" id="bmsg"></div>
+      <div class="list" id="bout-list" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <p class="foot">
+    纯前端单文件工具 · 无后端、无统计、无联网请求 · 图片只在你本机处理<br>
+    由 AI 绘梦师葉子 制作 · 尺寸数据为常见参考值，请以各平台后台为准
+  </p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/*==CORE-START==*/
+/* ---- 纯计算部分：不碰页面，可被独立测试 ---- */
+
+/* 最大公约数 */
+function gcd(a,b){a=Math.abs(a);b=Math.abs(b);while(b){var t=a%b;a=b;b=t;}return a||1;}
+
+/* 去掉小数末尾多余的 0 */
+function trimNum(x){
+  var s=(Math.round(x*100)/100).toFixed(2);
+  if(s.indexOf('.')>=0){s=s.replace(/0+$/,'').replace(/\.$/,'');}
+  return s;
+}
+
+/* 常见比例对照表：[宽比, 高比] */
+var RATIO_TABLE=[[1,1],[2,1],[3,1],[4,1],[3,2],[4,3],[5,4],[7,5],[16,9],[16,10],[21,9],[47,20],[191,100],
+                 [1,2],[2,3],[3,4],[4,5],[5,6],[5,7],[6,7],[9,16],[9,21]];
+
+/* 把 宽×高 说成「3:4」「16:9」这种大白话比例；对不上常见比例就用小数 */
+function ratioText(w,h){
+  if(!w||!h){return '—';}
+  var r=w/h,best=null,bestErr=1;
+  for(var i=0;i<RATIO_TABLE.length;i++){
+    var a=RATIO_TABLE[i][0],b=RATIO_TABLE[i][1];
+    var err=Math.abs(r-a/b)/(a/b);
+    if(err<bestErr){bestErr=err;best=[a,b];}
+  }
+  if(best&&bestErr<=0.012&&best[0]<=24&&best[1]<=24){return best[0]+':'+best[1];}
+  if(r>=1){return trimNum(r)+':1';}
+  return '1:'+trimNum(1/r);
+}
+
+/* 算裁切区域：先按目标比例取「能取到的最大矩形」，再按放大倍数缩小它，最后按锚点摆位置。
+   这里刻意保留小数、不做取整：drawImage 支持小数源矩形，比例才能和目标像素级吻合，不会出现拉伸变形。 */
+function computeCropRect(iw,ih,tw,th,zoom,anchor){
+  var target=tw/th;
+  var cw,ch;
+  if(iw/ih>target){ch=ih;cw=ih*target;}else{cw=iw;ch=iw/target;}
+  var z=zoom>0?zoom:1;
+  cw=cw/z;ch=ch/z;
+  cw=Math.max(1,Math.min(cw,iw));
+  ch=Math.max(1,Math.min(ch,ih));
+  var x,y;
+  if(anchor==='top'){x=(iw-cw)/2;y=0;}
+  else if(anchor==='bottom'){x=(iw-cw)/2;y=ih-ch;}
+  else if(anchor==='left'){x=0;y=(ih-ch)/2;}
+  else if(anchor==='right'){x=iw-cw;y=(ih-ch)/2;}
+  else{x=(iw-cw)/2;y=(ih-ch)/2;}
+  x=Math.max(0,Math.min(iw-cw,x));
+  y=Math.max(0,Math.min(ih-ch,y));
+  return {x:x,y:y,w:cw,h:ch};
+}
+
+/* ---- ZIP 打包（store 模式，不压缩，零依赖） ---- */
+var CRC_TABLE=(function(){
+  var t=new Array(256);
+  for(var n=0;n<256;n++){
+    var c=n;
+    for(var k=0;k<8;k++){c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);}
+    t[n]=c>>>0;
+  }
+  return t;
+})();
+
+function crc32(buf){
+  var crc=0xFFFFFFFF;
+  for(var i=0;i<buf.length;i++){
+    crc=(crc>>>8)^CRC_TABLE[(crc^buf[i])&0xFF];
+  }
+  return (crc^0xFFFFFFFF)>>>0;
+}
+
+function bytescat(list){
+  var total=0,i;
+  for(i=0;i<list.length;i++){total+=list[i].length;}
+  var out=new Uint8Array(total),p=0;
+  for(i=0;i<list.length;i++){out.set(list[i],p);p+=list[i].length;}
+  return out;
+}
+
+function zipStore(files){
+  var enc=new TextEncoder();
+  function u16(v){return [v&0xFF,(v>>>8)&0xFF];}
+  function u32(v){return [v&0xFF,(v>>>8)&0xFF,(v>>>16)&0xFF,(v>>>24)&0xFF];}
+  var out=[],cd=[],offset=0,i;
+  for(i=0;i<files.length;i++){
+    var nameBytes=enc.encode(files[i].name);
+    var data=files[i].data;
+    var crc=crc32(data);
+    var local=bytescat([
+      [0x50,0x4B,0x03,0x04],u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(nameBytes.length),u16(0),nameBytes
+    ]);
+    out.push(local);out.push(data);
+    cd.push({name:nameBytes,crc:crc,len:data.length,offset:offset});
+    offset+=local.length+data.length;
+  }
+  var cdParts=[];
+  for(i=0;i<cd.length;i++){
+    var e=cd[i];
+    cdParts.push(bytescat([
+      [0x50,0x4B,0x01,0x02],u16(20),u16(20),u16(0x0800),u16(0),u16(0),u16(0),
+      u32(e.crc),u32(e.len),u32(e.len),u16(e.name.length),u16(0),u16(0),u16(0),u16(0),
+      u32(0),u32(e.offset),e.name
+    ]));
+  }
+  var cdAll=bytescat(cdParts);
+  out.push(cdAll);
+  out.push(bytescat([
+    [0x50,0x4B,0x05,0x06],u16(0),u16(0),u16(cd.length),u16(cd.length),u32(cdAll.length),u32(offset),u16(0)
+  ]));
+  return bytescat(out);
+}
+/*==CORE-END==*/
+
+/* ================= 尺寸数据（内嵌，不需要联网） =================
+   字段：p 平台 / u 用途 / w 宽 / h 高 / n 注意事项 / s 来源口径
+   口径说明：只有各平台后台明确写过的才标「后台推荐值」，其余一律标「常见值…」。 */
+/*==DATA-START==*/
+var SIZES=[
+  /* 公众号 */
+  {p:'公众号',u:'封面首图（头条大图）',w:900,h:383,n:'图文首条的大封面，微信会按这个比例裁；重点内容别贴左右边缘。',s:'微信后台常见推荐值'},
+  {p:'公众号',u:'封面小图（次条）',w:383,h:383,n:'多图文里第二条及以后显示的小方块，正方形最稳。',s:'常见值，以平台后台为准'},
+  {p:'公众号',u:'聊天 / 朋友圈分享缩略图',w:500,h:500,n:'分享出去时那个方形小图，太窄会被裁成方块。',s:'常见值，以平台后台为准'},
+  {p:'公众号',u:'正文配图（横图）',w:1080,h:608,n:'正文字号 16px 时 1080 宽足够清晰，再宽手机上也看不出差别。',s:'常见值，以平台后台为准'},
+  {p:'公众号',u:'正文配图（方图）',w:1080,h:1080,n:'对比图、产品图常用，手机上占满整屏宽度。',s:'常见值，以平台后台为准'},
+  {p:'公众号',u:'公众号头像',w:1080,h:1080,n:'显示时会被裁成圆形，图案别贴边、别放细字。',s:'常见值，以平台后台为准'},
+  {p:'公众号',u:'长图文（一图流）',w:1080,h:2400,n:'一图流高度不固定，1080 宽 + 3~4 屏高最顺手。',s:'常见值，以平台后台为准'},
+
+  /* 小红书 */
+  {p:'小红书',u:'竖版封面 / 图文首图',w:1242,h:1660,n:'3:4 是小红书展示面积最大的比例，笔记列表里最占便宜。',s:'常见值，以平台后台为准'},
+  {p:'小红书',u:'竖版封面（备用写法）',w:1080,h:1440,n:'和 1242×1660 同为 3:4，文件更小、上传更快。',s:'常见值，以平台后台为准'},
+  {p:'小红书',u:'方形封面',w:1080,h:1080,n:'部分模板和搜索结果用方形，1:1 的图两边不会被切。',s:'常见值，以平台后台为准'},
+  {p:'小红书',u:'横版封面',w:1440,h:1080,n:'4:3 横图，少数教程 / 对比类笔记在用。',s:'常见值，以平台后台为准'},
+  {p:'小红书',u:'视频封面（竖）',w:1080,h:1440,n:'视频在主页列表里按 3:4 显示，封面做成 3:4 才不被裁。',s:'常见值，以平台后台为准'},
+  {p:'小红书',u:'头像',w:500,h:500,n:'圆形显示，正方形上传最保险。',s:'常见值，以平台后台为准'},
+
+  /* 抖音 */
+  {p:'抖音',u:'竖版视频（全屏）',w:1080,h:1920,n:'9:16 竖屏是抖音主流；用别的比例会上下留黑边。',s:'通用常见值'},
+  {p:'抖音',u:'视频封面',w:1080,h:1440,n:'主页作品列表按 3:4 显示封面，做成 9:16 会被裁掉上下。',s:'常见值，以平台后台为准'},
+  {p:'抖音',u:'横版视频',w:1920,h:1080,n:'横屏视频 / 中视频，16:9。',s:'通用常见值'},
+  {p:'抖音',u:'头像',w:500,h:500,n:'圆形显示，别把文字放在四个角。',s:'常见值，以平台后台为准'},
+  {p:'抖音',u:'主页背景图',w:1125,h:633,n:'主页顶部横幅，手机上两侧会被裁掉一部分。',s:'常见值，以平台后台为准'},
+  {p:'抖音',u:'商品 / 橱窗主图',w:800,h:800,n:'电商主图习惯用正方形，白底更通用。',s:'常见值，以平台后台为准'},
+
+  /* 视频号 */
+  {p:'视频号',u:'竖版视频',w:1080,h:1920,n:'9:16 竖屏，和抖音一样。',s:'通用常见值'},
+  {p:'视频号',u:'横版视频',w:1920,h:1080,n:'16:9 横屏，适合讲解、录屏。',s:'通用常见值'},
+  {p:'视频号',u:'视频封面',w:1080,h:1260,n:'视频号主页封面常见 6:7，比 3:4 更瘦长、显示更满。',s:'常见值，以平台后台为准'},
+  {p:'视频号',u:'直播 / 预约封面',w:1080,h:1920,n:'直播间和预约卡片都用竖屏，标题放在中间偏上更安全。',s:'常见值，以平台后台为准'},
+  {p:'视频号',u:'头像',w:500,h:500,n:'圆形显示，和微信号共用一套形象最好。',s:'常见值，以平台后台为准'},
+
+  /* B站 */
+  {p:'B站',u:'视频封面（投稿推荐）',w:1146,h:717,n:'投稿后台常见推荐尺寸，接近 16:10；重点字别贴边。',s:'常见值，以投稿后台为准'},
+  {p:'B站',u:'视频封面（16:9 版）',w:1920,h:1080,n:'首页推荐位、播放页通栏都是 16:9，用这个也不会被裁。',s:'通用常见值'},
+  {p:'B站',u:'竖屏视频封面',w:1080,h:1920,n:'竖屏 / Story 模式用 9:16。',s:'通用常见值'},
+  {p:'B站',u:'头像',w:500,h:500,n:'圆形显示，深色底更显眼。',s:'常见值，以平台后台为准'},
+  {p:'B站',u:'专栏封面',w:1146,h:717,n:'专栏头图和视频封面口径接近，可直接复用同一张。',s:'常见值，以平台后台为准'},
+
+  /* 知乎 */
+  {p:'知乎',u:'回答 / 文章配图（宽图）',w:1200,h:800,n:'正文宽度自适应，1200 宽足够清晰，3:2 读起来舒服。',s:'常见值，以平台后台为准'},
+  {p:'知乎',u:'回答 / 文章配图（方图）',w:1080,h:1080,n:'图表、截图、对比图用方形最整齐。',s:'常见值，以平台后台为准'},
+  {p:'知乎',u:'分享卡片 / 视频封面',w:1200,h:630,n:'站外分享和视频封面的通用横图比例（约 1.9:1）。',s:'通用常见值'},
+  {p:'知乎',u:'视频封面（16:9）',w:1920,h:1080,n:'视频播放页封面用 16:9。',s:'通用常见值'},
+  {p:'知乎',u:'头像',w:500,h:500,n:'圆形显示，正方形上传。',s:'常见值，以平台后台为准'},
+
+  /* 微博 */
+  {p:'微博',u:'单图 / 多图配图',w:1200,h:1200,n:'信息流里方形显示最完整，横图会被裁掉两侧。',s:'常见值，以平台后台为准'},
+  {p:'微博',u:'头条文章封面',w:1200,h:675,n:'文章卡片横图，16:9。',s:'常见值，以平台后台为准'},
+  {p:'微博',u:'视频封面',w:1920,h:1080,n:'视频卡片用 16:9。',s:'通用常见值'},
+  {p:'微博',u:'主页封面图',w:920,h:300,n:'个人主页顶部横幅，接近 3:1，手机上两侧会被裁。',s:'常见值，以平台后台为准'},
+  {p:'微博',u:'头像',w:500,h:500,n:'圆形显示，别放细字。',s:'常见值，以平台后台为准'},
+
+  /* 今日头条 */
+  {p:'今日头条',u:'文章大图封面（单图）',w:1024,h:576,n:'单图模式下信息流里展示最大，16:9。',s:'常见值，以平台后台为准'},
+  {p:'今日头条',u:'三图小封面',w:456,h:304,n:'三图模式里每张小图，三张尺寸要一致才整齐。',s:'常见值，以平台后台为准'},
+  {p:'今日头条',u:'微头条配图',w:1080,h:1080,n:'方图在列表里最稳。',s:'常见值，以平台后台为准'},
+  {p:'今日头条',u:'视频封面（横）',w:1920,h:1080,n:'西瓜 / 头条视频通用 16:9。',s:'通用常见值'},
+  {p:'今日头条',u:'视频封面（竖）',w:1080,h:1920,n:'竖版小视频用 9:16。',s:'通用常见值'},
+  {p:'今日头条',u:'头像',w:500,h:500,n:'圆形显示。',s:'常见值，以平台后台为准'},
+
+  /* 快手 */
+  {p:'快手',u:'竖版视频',w:1080,h:1920,n:'9:16 竖屏，和抖音一致。',s:'通用常见值'},
+  {p:'快手',u:'视频封面',w:1080,h:1440,n:'主页作品列表按 3:4 显示封面。',s:'常见值，以平台后台为准'},
+  {p:'快手',u:'横版视频',w:1920,h:1080,n:'16:9 横屏。',s:'通用常见值'},
+  {p:'快手',u:'主页背景图',w:1125,h:633,n:'主页顶部横幅，两侧会被裁。',s:'常见值，以平台后台为准'},
+  {p:'快手',u:'头像',w:500,h:500,n:'圆形显示。',s:'常见值，以平台后台为准'}
+];
+/*==DATA-END==*/
+
+/* ================= 小工具函数 ================= */
+var $=function(id){return document.getElementById(id);};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmtSize(n){
+  if(n===null||n===undefined||isNaN(n)){return '—';}
+  if(n<1024){return n+' B';}
+  if(n<1024*1024){return (n/1024).toFixed(1)+' KB';}
+  return (n/1024/1024).toFixed(2)+' MB';
+}
+var toastTimer=null;
+function toast(msg){
+  var t=$('toast');t.textContent=msg;t.classList.add('on');
+  if(toastTimer){clearTimeout(toastTimer);}
+  toastTimer=setTimeout(function(){t.classList.remove('on');},2200);
+}
+var PLAT_COLORS={'公众号':'#2f9e6e','小红书':'#e0533f','抖音':'#22242e','视频号':'#1a9c62','B站':'#3b8ede',
+  '知乎':'#2f6fd0','微博':'#d8443c','今日头条':'#d1453b','快手':'#e07b1a'};
+function platColor(p){return PLAT_COLORS[p]||'#5a5ad6';}
+
+var PLATFORMS=(function(){
+  var seen={},out=[];
+  for(var i=0;i<SIZES.length;i++){if(!seen[SIZES[i].p]){seen[SIZES[i].p]=1;out.push(SIZES[i].p);}}
+  return out;
+})();
+for(var si=0;si<SIZES.length;si++){SIZES[si].idx=si;}
+
+/* ================= 选项卡 ================= */
+var tabs=$('tabs');
+tabs.addEventListener('click',function(e){
+  var btn=e.target.closest ? e.target.closest('.tab') : null;
+  if(!btn){return;}
+  goTab(btn.getAttribute('data-tab'));
+});
+function goTab(id){
+  var all=tabs.querySelectorAll('.tab');
+  for(var i=0;i<all.length;i++){all[i].classList.toggle('is-on',all[i].getAttribute('data-tab')===id);}
+  var panels=document.querySelectorAll('.panel');
+  for(var j=0;j<panels.length;j++){panels[j].classList.toggle('is-on',panels[j].id===id);}
+  if(id==='t2'||id==='t3'){setTimeout(renderPreview,30);}
+  window.scrollTo(0,0);
+}
+
+/* ================= ① 速查表 ================= */
+var filter1={q:'',plat:'全部'};
+function renderChips(hostId,state,onPick){
+  var host=$(hostId);
+  var html='<button class="chip'+(state.plat==='全部'?' is-on':'')+'" type="button" data-p="全部">全部</button>';
+  for(var i=0;i<PLATFORMS.length;i++){
+    var p=PLATFORMS[i];
+    html+='<button class="chip'+(state.plat===p?' is-on':'')+'" type="button" data-p="'+esc(p)+'">'+esc(p)+'</button>';
+  }
+  host.innerHTML=html;
+  host.onclick=function(e){
+    var b=e.target.closest?e.target.closest('.chip'):null;
+    if(!b){return;}
+    onPick(b.getAttribute('data-p'));
+  };
+}
+function matchSize(s,q,plat){
+  if(plat&&plat!=='全部'&&s.p!==plat){return false;}
+  if(!q){return true;}
+  var hay=(s.p+' '+s.u+' '+s.w+'x'+s.h+' '+s.w+'×'+s.h+' '+ratioText(s.w,s.h)).toLowerCase();
+  return hay.indexOf(q.toLowerCase())>=0;
+}
+function filtered1(){
+  var out=[];
+  for(var i=0;i<SIZES.length;i++){if(matchSize(SIZES[i],filter1.q,filter1.plat)){out.push(SIZES[i]);}}
+  return out;
+}
+function renderList1(){
+  var arr=filtered1();
+  $('count1').textContent='共 '+arr.length+' 条（全部 '+SIZES.length+' 条）';
+  var host=$('list1');
+  if(!arr.length){
+    host.innerHTML='<div class="empty">没找到匹配的尺寸。<br>换个关键词，或点上面的「全部」看所有平台。</div>';
+    return;
+  }
+  var html='';
+  for(var i=0;i<arr.length;i++){
+    var s=arr[i];
+    html+='<div class="item">'
+      +'<div class="main">'
+      +'<div class="top"><span class="tag" style="background:'+platColor(s.p)+'">'+esc(s.p)+'</span>'
+      +'<span class="use">'+esc(s.u)+'</span></div>'
+      +'<div class="size">'+s.w+' × '+s.h+' px<span>比例 '+ratioText(s.w,s.h)+'</span></div>'
+      +'<div class="note">'+esc(s.n)+'</div>'
+      +'<div class="src">口径：'+esc(s.s)+'</div>'
+      +'</div>'
+      +'<div class="act"><button class="btn sm" type="button" data-use="'+s.idx+'">用这个尺寸裁切 →</button></div>'
+      +'</div>';
+  }
+  host.innerHTML=html;
+}
+$('list1').addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('[data-use]'):null;
+  if(!b){return;}
+  carryToCrop(SIZES[parseInt(b.getAttribute('data-use'),10)]);
+});
+$('q1').addEventListener('input',function(){filter1.q=this.value.trim();renderList1();});
+
+/* ================= 图片状态（② ③ 共用） ================= */
+var state={img:null,name:'',size:0,w:0,h:0,tw:900,th:383,label:'',zoom:1,anchor:'center',fmt:'png',q:92,url:null};
+
+function loadFile(file){
+  if(!file){return;}
+  if(file.type&&file.type.indexOf('image/')!==0){toast('这个文件不是图片，换一张试试');return;}
+  if(state.url){URL.revokeObjectURL(state.url);state.url=null;}
+  var url=URL.createObjectURL(file);
+  var img=new Image();
+  img.onload=function(){
+    state.img=img;state.name=file.name||'图片';state.size=file.size||0;
+    state.w=img.naturalWidth;state.h=img.naturalHeight;state.url=url;
+    onImageReady();
+  };
+  img.onerror=function(){URL.revokeObjectURL(url);toast('这张图打不开，可能格式不支持（如 HEIC）');};
+  img.src=url;
+}
+function onImageReady(){
+  var info='<span>文件名：<b class="fname">'+esc(state.name)+'</b></span>'
+    +'<span>像素：<b>'+state.w+' × '+state.h+'</b></span>'
+    +'<span>体积：<b>'+fmtSize(state.size)+'</b></span>'
+    +'<span>比例：<b>'+ratioText(state.w,state.h)+'</b></span>';
+  ['orig2','orig3'].forEach(function(id){var el=$(id);el.innerHTML=info;el.classList.remove('hidden');});
+  renderPreview();
+  toast('图片已就绪：'+state.w+' × '+state.h);
+}
+function fileFromInput(e){
+  var f=e.target.files&&e.target.files[0];
+  if(f){loadFile(f);}
+  e.target.value='';
+}
+function bindDrop(zoneId,inputId){
+  var zone=$(zoneId),input=$(inputId);
+  zone.addEventListener('click',function(){input.click();});
+  input.addEventListener('change',fileFromInput);
+  ['dragenter','dragover'].forEach(function(ev){
+    zone.addEventListener(ev,function(e){e.preventDefault();zone.classList.add('over');});
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    zone.addEventListener(ev,function(e){e.preventDefault();zone.classList.remove('over');});
+  });
+  zone.addEventListener('drop',function(e){
+    var dt=e.dataTransfer;
+    if(dt&&dt.files&&dt.files.length){loadFile(dt.files[0]);}
+  });
+}
+bindDrop('drop2','file2');
+bindDrop('drop3','file3');
+document.addEventListener('paste',function(e){
+  var items=e.clipboardData&&e.clipboardData.items;
+  if(!items){return;}
+  for(var i=0;i<items.length;i++){
+    if(items[i].type&&items[i].type.indexOf('image/')===0){
+      var f=items[i].getAsFile();
+      if(f){loadFile(f);toast('已粘贴图片');}
+      return;
+    }
+  }
+});
+
+/* ================= 目标尺寸 ================= */
+function clampSize(v){v=parseInt(v,10);if(isNaN(v)||v<1){v=1;}if(v>8000){v=8000;}return v;}
+function setTarget(w,h,label,silent){
+  state.tw=clampSize(w);state.th=clampSize(h);
+  state.label=label||'';
+  $('tw').value=state.tw;$('th').value=state.th;
+  var cb=$('carry');
+  if(state.label){cb.textContent='已带入：'+state.label+'（'+state.tw+' × '+state.th+' px）';cb.classList.remove('hidden');}
+  else{cb.classList.add('hidden');}
+  renderPreview(!!silent);
+}
+function carryToCrop(s){
+  setTarget(s.w,s.h,s.p+' · '+s.u,true);
+  goTab('t2');
+  toast('已把「'+s.p+' · '+s.u+'」带到裁切区');
+}
+$('tw').addEventListener('input',function(){state.tw=clampSize(this.value);state.label='';$('carry').classList.add('hidden');renderPreview();});
+$('th').addEventListener('input',function(){state.th=clampSize(this.value);state.label='';$('carry').classList.add('hidden');renderPreview();});
+/* 输入框留空或填了非法值时，失焦后回填合法数值，避免出现「1 × 383」这种中间态 */
+['tw','th'].forEach(function(id){
+  $(id).addEventListener('blur',function(){this.value=(id==='tw')?state.tw:state.th;});
+});
+document.querySelectorAll('[data-ratio]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var parts=btn.getAttribute('data-ratio').split(':');
+    var a=parseFloat(parts[0]),b=parseFloat(parts[1]);
+    var w=state.tw;
+    var h=Math.max(1,Math.round(w*b/a));
+    if(h>8000){h=8000;w=Math.max(1,Math.round(h*a/b));}
+    setTarget(w,h,'',true);
+    toast('已按 '+parts[0]+':'+parts[1]+' 换算成 '+state.tw+' × '+state.th);
+  });
+});
+
+/* ================= 锚点 / 放大 ================= */
+$('anchors').addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('[data-anchor]'):null;
+  if(!b){return;}
+  var all=$('anchors').querySelectorAll('.chip');
+  for(var i=0;i<all.length;i++){all[i].classList.toggle('is-on',all[i]===b);}
+  state.anchor=b.getAttribute('data-anchor');
+  renderPreview();
+});
+$('zoom').addEventListener('input',function(){
+  state.zoom=parseInt(this.value,10)/100;
+  $('zoomv').textContent=state.zoom.toFixed(1)+'×';
+  renderPreview();
+});
+var ANCHOR_CN={center:'居中',top:'顶部',bottom:'底部',left:'左中',right:'右中'};
+
+/* ================= 预览与导出 ================= */
+var cv=$('cv'),ctx=cv.getContext('2d');
+function drawTo(c,tw,th,whiteBg){
+  var r=computeCropRect(state.w,state.h,tw,th,state.zoom,state.anchor);
+  c.clearRect(0,0,tw,th);
+  if(whiteBg){c.fillStyle='#ffffff';c.fillRect(0,0,tw,th);}
+  c.imageSmoothingEnabled=true;
+  if('imageSmoothingQuality' in c){c.imageSmoothingQuality='high';}
+  c.drawImage(state.img,r.x,r.y,r.w,r.h,0,0,tw,th);
+  return r;
+}
+function renderPreview(skipEstimate){
+  $('tinfo').textContent=state.tw+' × '+state.th+'（'+ratioText(state.tw,state.th)+'）';
+  $('cropinfo').textContent='裁切区域：—';
+  if(!state.img){
+    cv.width=state.tw;cv.height=state.th;
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#f4f6fb';ctx.fillRect(0,0,cv.width,cv.height);
+    ctx.fillStyle='#9a9fb5';ctx.font='600 22px sans-serif';ctx.textAlign='center';
+    ctx.fillText('先在上面选一张图片',cv.width/2,cv.height/2);
+    $('upwarn').classList.add('hidden');
+    $('est').textContent='预计体积：—';
+    return;
+  }
+  cv.width=state.tw;cv.height=state.th;
+  var r=drawTo(ctx,state.tw,state.th,false);
+  $('cropinfo').textContent='裁切区域：'+Math.round(r.w)+' × '+Math.round(r.h)+' px（原图 '+Math.round(r.x)+','+Math.round(r.y)+' 起）';
+  $('upwarn').classList.toggle('hidden',!(r.w<state.tw||r.h<state.th));
+  $('carry2').textContent=ANCHOR_CN[state.anchor]+' · '+state.zoom.toFixed(1)+'×';
+  $('carry3').textContent=(state.fmt==='png'?'PNG':'JPG（质量 '+state.q+'）');
+  if(!skipEstimate){scheduleEstimate();}
+}
+var estTimer=null;
+function scheduleEstimate(){
+  $('est').textContent='预计体积：计算中…';
+  if(estTimer){clearTimeout(estTimer);}
+  estTimer=setTimeout(function(){
+    cropBlob(state.tw,state.th).then(function(blob){
+      $('est').textContent='预计体积：约 '+fmtSize(blob.size);
+    }).catch(function(){$('est').textContent='预计体积：—';});
+  },260);
+}
+function cropBlob(tw,th){
+  return new Promise(function(resolve,reject){
+    if(!state.img){reject(new Error('no image'));return;}
+    var c=document.createElement('canvas');
+    c.width=tw;c.height=th;
+    var cx=c.getContext('2d');
+    var white=(state.fmt==='jpg');
+    drawTo(cx,tw,th,white);
+    var mime=(state.fmt==='jpg')?'image/jpeg':'image/png';
+    var q=(state.fmt==='jpg')?Math.min(1,Math.max(0.4,state.q/100)):undefined;
+    if(c.toBlob){
+      c.toBlob(function(b){b?resolve(b):reject(new Error('toBlob failed'));},mime,q);
+    }else{
+      try{
+        var d=c.toDataURL(mime,q),bin=atob(d.split(',')[1]),u=new Uint8Array(bin.length);
+        for(var i=0;i<bin.length;i++){u[i]=bin.charCodeAt(i);}
+        resolve(new Blob([u],{type:mime}));
+      }catch(err){reject(err);}
+    }
+  });
+}
+function safeName(s){return String(s).replace(/[\\/:*?"<>|]/g,'_').replace(/\s+/g,' ').trim().slice(0,60);}
+function baseName(){
+  var n=state.name||'图片';
+  return safeName(n.replace(/\.[^.]+$/,''))||'图片';
+}
+function buildName(entry,ext,w,h){
+  w=w||state.tw;h=h||state.th;
+  var parts=[baseName()];
+  if(entry){parts.push(safeName(entry.p)+'-'+safeName(entry.u));}
+  else{parts.push(state.label?safeName(state.label.replace(/\s*·\s*/g,'-')):'裁切');}
+  parts.push(w+'x'+h);
+  return parts.join('_')+'.'+ext;
+}
+function download(blob,name){
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(function(){a.remove();URL.revokeObjectURL(url);},15000);
+}
+function currentExt(){return state.fmt==='jpg'?'jpg':'png';}
+
+$('export1').addEventListener('click',function(){
+  if(!state.img){toast('请先选一张图片');return;}
+  var btn=this;btn.disabled=true;btn.textContent='正在导出…';
+  cropBlob(state.tw,state.th).then(function(blob){
+    download(blob,buildName(null,currentExt()));
+    $('est').textContent='已导出：'+fmtSize(blob.size);
+    toast('已导出 '+state.tw+' × '+state.th+'（'+fmtSize(blob.size)+'）');
+  }).catch(function(){toast('导出失败，换张图或换个尺寸试试');})
+  .then(function(){btn.disabled=false;btn.textContent='导出这张图';});
+});
+document.querySelectorAll('input[name=fmt]').forEach(function(r){
+  r.addEventListener('change',function(){
+    state.fmt=this.value;
+    $('qline').style.opacity=(state.fmt==='jpg')?'1':'.45';
+    renderPreview(true);scheduleEstimate();
+  });
+});
+$('quality').addEventListener('input',function(){
+  state.q=parseInt(this.value,10);$('qv').textContent=state.q;
+  renderPreview(true);scheduleEstimate();
+});
+
+/* ================= ③ 一图多出 ================= */
+var filter3={q:'',plat:'全部'};
+var picked={};
+function filtered3(){
+  var out=[];
+  for(var i=0;i<SIZES.length;i++){if(matchSize(SIZES[i],filter3.q,filter3.plat)){out.push(SIZES[i]);}}
+  return out;
+}
+function renderList3(){
+  var arr=filtered3();
+  var host=$('list3');
+  if(!arr.length){host.innerHTML='<div class="empty">没找到匹配的尺寸，换个关键词试试。</div>';return;}
+  var html='';
+  for(var i=0;i<arr.length;i++){
+    var s=arr[i];
+    html+='<label class="item compact">'
+      +'<input type="checkbox" data-pick="'+s.idx+'"'+(picked[s.idx]?' checked':'')+' style="width:17px;height:17px;accent-color:#5a5ad6;flex:0 0 auto">'
+      +'<span class="tag" style="background:'+platColor(s.p)+'">'+esc(s.p)+'</span>'
+      +'<span class="main"><span class="use">'+esc(s.u)+'</span> <span class="pill gray">'+s.w+' × '+s.h+' · '+ratioText(s.w,s.h)+'</span></span>'
+      +'</label>';
+  }
+  host.innerHTML=html;
+  updateSelCount();
+}
+function updateSelCount(){
+  var n=0;
+  for(var k in picked){if(picked[k]){n++;}}
+  $('selCount').textContent='已选 '+n+' 条';
+}
+$('list3').addEventListener('change',function(e){
+  var cb=e.target.closest?e.target.closest('[data-pick]'):null;
+  if(!cb){return;}
+  var idx=parseInt(cb.getAttribute('data-pick'),10);
+  if(cb.checked){picked[idx]=1;}else{delete picked[idx];}
+  updateSelCount();
+});
+$('q3').addEventListener('input',function(){filter3.q=this.value.trim();renderList3();});
+$('selAll').addEventListener('click',function(){
+  var arr=filtered3();
+  for(var i=0;i<arr.length;i++){picked[arr[i].idx]=1;}
+  renderList3();toast('已勾选当前 '+arr.length+' 条');
+});
+$('selNone').addEventListener('click',function(){picked={};renderList3();});
+
+function setBar(p){
+  var bar=$('bar');
+  bar.classList.remove('hidden');
+  bar.firstElementChild.style.width=Math.round(p*100)+'%';
+}
+function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function pickedList(){
+  var out=[];
+  for(var i=0;i<SIZES.length;i++){if(picked[SIZES[i].idx]){out.push(SIZES[i]);}}
+  return out;
+}
+$('run').addEventListener('click',async function(){
+  if(!state.img){toast('请先选一张原图');goTab('t3');return;}
+  var list=pickedList();
+  if(!list.length){toast('请先勾选至少一个尺寸');return;}
+  var zipMode=(document.querySelector('input[name=bout]:checked')||{}).value==='zip';
+  var btn=this;btn.disabled=true;btn.textContent='正在处理…';
+  $('bout-list').innerHTML='';
+  var files=[],rows='',fail=0;
+  var oldT=state.tw,oldH=state.th;
+  for(var i=0;i<list.length;i++){
+    var s=list[i];
+    setBar(i/list.length);
+    $('bmsg').textContent='正在处理 '+(i+1)+'/'+list.length+'：'+s.p+' · '+s.u;
+    await sleep(16);
+    try{
+      state.tw=s.w;state.th=s.h;
+      var blob=await cropBlob(s.w,s.h);
+      var name=buildName(s,blob.type==='image/jpeg'?'jpg':'png',s.w,s.h);
+      if(zipMode){
+        files.push({name:name,data:new Uint8Array(await blob.arrayBuffer())});
+        rows+='<div class="item compact"><span class="pill ok">✓</span><span class="main"><span class="use">'+esc(s.p+' · '+s.u)+'</span> <span class="pill gray">'+s.w+'×'+s.h+'</span></span><span class="pill gray">'+fmtSize(blob.size)+'</span></div>';
+      }else{
+        download(blob,name);
+        rows+='<div class="item compact"><span class="pill ok">✓ 已下载</span><span class="main"><span class="use">'+esc(s.p+' · '+s.u)+'</span> <span class="pill gray">'+s.w+'×'+s.h+'</span></span><span class="pill gray">'+fmtSize(blob.size)+'</span></div>';
+        $('bout-list').innerHTML=rows;
+        await sleep(320);
+      }
+      $('bout-list').innerHTML=rows;
+    }catch(err){
+      fail++;
+      rows+='<div class="item compact"><span class="pill warn">✗ 失败</span><span class="main"><span class="use">'+esc(s.p+' · '+s.u)+'</span></span></div>';
+      $('bout-list').innerHTML=rows;
+    }
+  }
+  state.tw=oldT;state.th=oldH;
+  renderPreview(true);
+  setBar(1);
+  if(zipMode&&files.length){
+    try{
+      var zip=zipStore(files);
+      var zipName=baseName()+'_平台尺寸_'+files.length+'张.zip';
+      download(new Blob([zip],{type:'application/zip'}),zipName);
+      $('bmsg').textContent='完成：'+files.length+' 张已打包（'+(fail?fail+' 张失败，':'')+fmtSize(zip.length)+'）→ '+zipName;
+    }catch(err){
+      $('bmsg').textContent='打包失败，可改选「逐个下载」再试一次。';
+    }
+  }else{
+    $('bmsg').textContent='完成：成功 '+(list.length-fail)+' 张'+(fail?'，失败 '+fail+' 张':'')+'（已逐个下载，浏览器可能提示「允许多个下载」）';
+  }
+  toast('批量裁切完成');
+  btn.disabled=false;btn.textContent='开始批量裁切';
+});
+
+/* ================= 启动 ================= */
+function pickPlat(stateObj,chipsId,after){
+  renderChips(chipsId,stateObj,function(p){
+    stateObj.plat=p;
+    pickPlat(stateObj,chipsId,after);
+    after();
+  });
+}
+pickPlat(filter1,'platChips',renderList1);
+pickPlat(filter3,'platChips3',renderList3);
+$('reset1').onclick=function(){
+  filter1.q='';filter1.plat='全部';$('q1').value='';
+  pickPlat(filter1,'platChips',renderList1);renderList1();
+};
+renderList1();
+renderList3();
+renderPreview(true);
+$('qline').style.opacity='.45';
+window.addEventListener('resize',function(){/* 预览用 CSS 自适应，无需重绘 */});
+})();
+</script>
+<!-- SITE-INJECT-START -->
+<link rel="icon" href="../favicon.ico">
+<link rel="apple-touch-icon" href="../favicon.ico">
+<style>
+#site-back{position:fixed;left:14px;bottom:14px;z-index:2147483000;
+  display:inline-flex;align-items:center;gap:8px;
+  font:600 13px/1 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  opacity:.92;transition:opacity .15s}
+#site-back:hover{opacity:1}
+#site-back .site-home{display:inline-flex;align-items:center;color:#22243a;
+  background:rgba(255,255,255,.94);border:1px solid #e4e6ef;border-radius:999px;
+  padding:9px 14px;text-decoration:none;box-shadow:0 4px 14px rgba(34,36,58,.14);
+  transition:transform .15s}
+#site-back .site-home:hover{transform:translateY(-1px)}
+#site-back .site-chips{display:inline-flex;align-items:center;gap:6px;font-weight:500}
+#site-back .site-chips::before{content:"相关";color:#7a7d94;font-size:12px;font-weight:600}
+#site-back .site-chip{color:#1d9e75;background:rgba(255,255,255,.92);border:1px solid #cfe9df;
+  border-radius:999px;padding:7px 12px;text-decoration:none;white-space:nowrap;
+  box-shadow:0 3px 10px rgba(34,36,58,.10);transition:background .15s,transform .15s}
+#site-back .site-chip:hover{background:#eefaf5;transform:translateY(-1px)}
+@media (max-width:560px){
+  #site-back{left:10px;bottom:10px;gap:6px;flex-wrap:wrap;max-width:calc(100% - 20px)}
+  #site-back .site-home{padding:8px 12px;font-size:12px}
+  #site-back .site-chips{gap:4px}
+  #site-back .site-chips::before{display:none}
+  #site-back .site-chip{padding:6px 10px;font-size:12px}
+}
+</style>
+<span id="site-back"><a class="site-home" href="../index.html" title="回到工具箱">← 工具箱</a><span class="site-chips"><a class="site-chip" href="./img-batch.html">图片批处理</a><a class="site-chip" href="./cover-tool.html">公众号封面</a></span></span>
+<!-- SITE-INJECT-END -->
+</body>
+</html>
