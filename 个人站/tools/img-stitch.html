@@ -1,0 +1,2329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>图片拼接与切分 · 纯本地处理 · 文件不上传</title>
+<meta name="description" content="把多张图拼成一张长图 / 网格图，或把一张图切成九宫格、长图分段、自定义分割。全部在浏览器本地完成，文件不上传，断网可用。">
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --line:#e4e7f0; --text:#1f2340; --muted:#7c819a;
+  --brand:#3f6ef0; --brand2:#eaf1ff; --ok:#1f9d55; --warn:#b7791f; --err:#d64545;
+  --rl:14px;
+  --pad:14px;        /* 页面左右内边距：吸顶标签栏靠它做"通栏"（左右负边距） */
+  --bar:62px;        /* 吸顶标签栏的高度：右列 sticky 的 top 要避开它 */
+}
+*{box-sizing:border-box}
+html{margin:0;padding:0;scroll-padding-top:calc(var(--bar) + 8px)}
+body{background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  margin:0 auto;padding:var(--pad);max-width:1180px;-webkit-text-size-adjust:100%}
+h1{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:11.5px;font-weight:400;color:var(--brand);background:var(--brand2);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.lead{color:var(--muted);font-size:12.5px;margin:0 0 8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rl);padding:12px;margin:0}
+.card h2{font-size:14.5px;margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 0;line-height:1.7}
+.hint b{color:var(--text)}
+.spacer{flex:1}
+.hidden{display:none!important}
+.row2{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.row2>*{min-width:0}
+
+/* ==========================================================================
+   ① 吸顶标签栏
+   目标：滚到哪儿都能切标签，不用往回翻。
+   · background 必须是**不透明**的（半透明会让下面的内容透出来，看着脏）
+   · 用左右负边距做"通栏"，否则内容会从左右两侧的内边距缝隙里冒出来
+   · html 上的 scroll-padding-top 让浏览器"滚到某元素"时别被这条栏压住
+   ========================================================================== */
+.tabs{position:sticky;top:0;z-index:40;display:flex;gap:8px;
+  margin:0 calc(-1 * var(--pad)) 12px;padding:10px var(--pad);
+  background:var(--bg);box-shadow:0 1px 0 var(--line),0 8px 14px -12px rgba(31,35,64,.45)}
+.tabs button{flex:1;border:1px solid var(--line);background:#fff;border-radius:11px;height:42px;
+  font:inherit;font-size:14px;cursor:pointer;color:var(--muted);padding:0 10px}
+.tabs button:hover{border-color:var(--brand)}
+.tabs button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+
+/* ==========================================================================
+   ② 两列布局（≥940px）
+   左列 = 上传 / 版式 / 参数；右列 = 预览 / 尺寸 / 导出。
+   右列整列 sticky —— 这才是"不用往下拉"的关键：滚左列时预览和导出按钮一直在。
+   ========================================================================== */
+.layout{display:grid;grid-template-columns:minmax(0,55fr) minmax(0,45fr);gap:16px;align-items:start}
+.col-main,.col-side{min-width:0;display:flex;flex-direction:column;gap:10px}
+.col-side{position:sticky;top:calc(var(--bar) + 12px);align-self:start}
+/* ⚠️ 右列第一张卡不许有任何 margin-top：两列顶边必须齐平。
+   （sticky 的 top 在 scrollY=0 时不会把元素往下推 —— 只有当它的自然位置高于 top 阈值才会。）
+   本工具里自然位置约 136px、阈值 74px，所以首屏是齐的；这条注释是防止有人"为了留白"加 margin。 */
+.col-side>.card-pv,#side-stitch>.card-pv,#side-split>.card-pv{margin-top:0}
+/* 两个面板内部也各自是竖排的一摞卡片（间距统一由 gap 管，卡片本身不留 margin） */
+#panel-stitch,#panel-split,#side-stitch,#side-split{display:flex;flex-direction:column;gap:10px;min-width:0}
+/* 左列更紧凑：行距、内边距、标题都收一点，把纵向长度压下来 */
+.col-main .card{padding:10px 12px}
+.col-main .field{margin:6px 0}
+.col-main .card h2{font-size:13.5px;margin-bottom:6px}
+.col-main .hint{margin-top:5px}
+/* 成对的短字段并排（边框 / 间距这种），别一行一个往下堆 */
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px}
+.pair .field{margin:4px 0}
+.pair .field>.k{min-width:0;flex:none}
+.pair .field .v{min-width:38px}
+
+/* ==========================================================================
+   ③ 单列（<940px）：靠 display:contents 把卡片"提到"同一个 flex 竖列里，
+      再用 order 排出 队列 → 预览 → 参数 → 导出 的顺序
+      （这样手机上预览会紧跟在图片下面，调参数时它就在上面不远处）
+   ========================================================================== */
+@media (max-width:939px){
+  .layout{display:flex;flex-direction:column;gap:10px}
+  .col-main,.col-side{display:contents}
+  #panel-stitch,#panel-split,#side-stitch,#side-split{display:contents}
+  .card-queue{order:1}
+  .card-pv{order:2}
+  .card-par{order:3}
+  .card-exp{order:4}
+}
+
+/* ---------- 选图 ---------- */
+.drop{border:2px dashed #c8cfe4;border-radius:var(--rl);padding:16px 14px;text-align:center;background:#fbfcff;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand2)}
+.drop .m1{font-size:14px}
+.drop .m2{font-size:12px;color:var(--muted);margin-top:5px}
+.drop input{display:none}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;min-height:4px}
+.thumb{position:relative;width:64px;height:64px;border-radius:9px;overflow:hidden;border:2px solid transparent;
+  background:#eef1f8;cursor:grab;flex:none;touch-action:none}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.thumb.on{border-color:var(--brand)}
+.thumb.drag{opacity:.4}
+.thumb.over{border-color:var(--ok);border-style:dashed}
+.thumb .x{position:absolute;top:0;right:0;width:18px;height:18px;border:0;border-radius:0 6px 0 8px;
+  background:rgba(31,35,64,.72);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer}
+/* 序号角标在**左上角**（✕ 在右上角，两个不打架） */
+.thumb .no{position:absolute;left:0;top:0;min-width:16px;height:16px;border-radius:0 0 6px 0;
+  background:rgba(63,110,240,.9);color:#fff;font-size:10.5px;line-height:16px;text-align:center;padding:0 3px;pointer-events:none}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------- 控件 ---------- */
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:0 13px;height:34px;font:inherit;
+  font-size:13px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--line);color:var(--text)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:#3560dd;color:#fff}
+.btn.ghost{background:#fff}
+/* 小号按钮 30px：桌面上够用；手机上单独提到 36px（见下方媒体查询）
+   —— 缩略图下面的「← 前移 / 后移 → / 删除这张」就是这个尺寸，
+      28px 在手机上手指点不中（用户实测反馈）。 */
+.btn.sm{height:30px;font-size:12.5px;padding:0 10px}
+.field{display:flex;align-items:center;gap:9px;margin:8px 0;flex-wrap:wrap;min-width:0}
+.field>.k{font-size:12.5px;color:var(--muted);flex:none;min-width:66px}
+.field input[type=number],.field input[type=text]{border:1px solid var(--line);border-radius:8px;height:32px;padding:0 9px;
+  font:inherit;font-size:13px;color:var(--text);background:#fff;min-width:0;flex:1;max-width:190px}
+.field input[type=color]{width:38px;height:30px;padding:1px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.field input[type=range]{flex:1;min-width:80px;accent-color:var(--brand);margin:0}
+.field .v{font-size:12.5px;color:var(--muted);min-width:42px;text-align:right;flex:none}
+.seg{display:inline-flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:#fff;border-radius:8px;height:31px;padding:0 11px;
+  font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.seg button:hover{border-color:var(--brand)}
+.seg button.on{background:var(--brand2);border-color:var(--brand);color:var(--brand);font-weight:600}
+.sw{display:inline-flex;align-items:center;gap:7px;font-size:13px;cursor:pointer;user-select:none}
+.sw input{width:17px;height:17px;accent-color:var(--brand);margin:0}
+.pill{font-size:12px;color:var(--muted);background:#f2f4fa;border-radius:999px;padding:2px 10px}
+.in2{display:flex;gap:8px}
+.in2 label{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted)}
+.in2 input{width:66px;border:1px solid var(--line);border-radius:8px;height:30px;padding:0 8px;font:inherit;font-size:13px}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.swatches button{width:26px;height:26px;border-radius:7px;border:2px solid transparent;cursor:pointer;padding:0}
+.swatches button.on{border-color:var(--brand);box-shadow:0 0 0 2px #fff inset}
+
+/* ---------- 画布 ---------- */
+.stage{position:relative;margin-top:10px;border:1px solid var(--line);background:
+  repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;overflow:auto;text-align:center;
+  padding:10px;min-height:120px;max-height:62vh}
+/* ⚠️ max-width:none 是刻意的：预览缩放 >100% 时要能真的放大（stage 负责滚动），
+   不能被 max-width:100% 又缩回去 —— 那样"放大看看"就成了假按钮。 */
+.stage canvas{display:block;margin:0 auto;max-width:none;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
+.stage .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px 14px;
+  color:var(--muted);font-size:12.5px;line-height:1.8;background:rgba(255,255,255,.72);text-align:center}
+.sizebox{background:#f8f9fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:9px;font-size:12.5px;color:var(--muted);line-height:1.9}
+.sizebox b{color:var(--text)}
+.sizebox .big{font-size:17px;color:var(--brand);font-weight:700;letter-spacing:.3px}
+
+/* 预览卡"放大看"：点一下铺满整屏（手机上 28vh 太小，看得清才敢调参数） */
+.card-pv.full{position:fixed;inset:10px;z-index:80;margin:0;overflow:auto;
+  box-shadow:0 18px 50px -12px rgba(31,35,64,.45)}
+.card-pv.full .stage{max-height:72vh}
+
+/* 切分：分割线覆层 */
+/* .cvwrap 把画布和覆层包成一个"同尺寸"的容器 —— 这样分割线的定位就是画布内坐标，
+   不用去算画布在 stage 里的偏移（那种偏移算法一改布局就会错位）。 */
+.cvwrap{position:relative;display:inline-block;max-width:100%;vertical-align:top}
+.lines{position:absolute;inset:0;pointer-events:none}
+.lines .ln{position:absolute;left:0;right:0;height:0;border-top:2px dashed rgba(63,110,240,.9);pointer-events:auto;
+  cursor:ns-resize;touch-action:none}
+.lines .ln::after{content:"";position:absolute;left:50%;top:-9px;width:46px;height:16px;margin-left:-23px;
+  border-radius:8px;background:rgba(63,110,240,.92)}
+.lines .ln .tag{position:absolute;right:4px;top:-10px;background:rgba(63,110,240,.92);color:#fff;font-size:10.5px;
+  line-height:15px;border-radius:6px;padding:0 5px;pointer-events:none}
+.sliceno{position:absolute;font-size:11px;line-height:16px;padding:0 5px;border-radius:6px;
+  background:rgba(31,35,64,.78);color:#fff;pointer-events:none}
+
+/* ---------- 进度 / 消息 ---------- */
+.prog{height:7px;background:#e9ecf5;border-radius:999px;overflow:hidden;margin-top:9px}
+.prog>i{display:block;height:100%;width:0;background:var(--brand);transition:width .2s}
+.pstat{font-size:12.5px;color:var(--muted);margin-top:6px}
+.msg{margin-top:9px;border-radius:9px;padding:9px 11px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start;line-height:1.7}
+.msg.ok{background:#eefaf1;color:#15683a}
+.msg.warn{background:#fff8e8;color:#8a5b00}
+.msg.err{background:#fdeeee;color:#96201f}
+.msg .x{margin-left:auto;border:0;background:none;font-size:15px;cursor:pointer;color:inherit;padding:0 2px}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 0 22px}
+
+/* ==========================================================================
+   ④ 手机（≤560px）
+   · 标签栏仍然吸顶
+   · 预览卡**吸顶**且压到 28vh —— 这样拖下面的滑杆时预览一直在视野里
+     （用 max(28vh,150px) 兜住横屏：横屏时 28vh 只有一百来像素，太扁了）
+   · 成对字段恢复单列，免得每个只有一百多像素宽
+   ========================================================================== */
+@media (max-width:560px){
+  :root{--pad:9px;--bar:58px}
+  body{padding:var(--pad)}
+  h1{font-size:17px}
+  .lead{display:none}
+  .tabs button{height:38px;font-size:13px}
+  .field>.k{min-width:56px}
+  .field input[type=number],.field input[type=text]{max-width:100%}
+  .seg button{height:29px;padding:0 9px;font-size:12px}
+  .btn{height:32px;padding:0 10px;font-size:12.5px}
+  /* ★ 小号按钮在手机上提到 36px：缩略图下面的「← 前移 / 后移 → / 删除这张」就是它。
+     用户实测反馈 28px 手指点不中（.btn.sm 的优先级高于 .btn，所以必须单独写这一条）。 */
+  .btn.sm{height:36px;padding:0 12px;font-size:13px}
+  .thumb{width:56px;height:56px}
+  .stage{padding:6px;max-height:56vh}
+  .pair{grid-template-columns:1fr}
+  /* 预览吸顶：top 要让开标签栏；z-index 低于标签栏，滚上去时标签栏压在它上面 */
+  .card-pv{position:sticky;top:var(--bar);z-index:20;min-height:140px;
+    box-shadow:0 10px 16px -14px rgba(31,35,64,.5)}
+  .card-pv .stage{max-height:max(28vh,150px);min-height:0}
+  .card-pv h2{margin-bottom:4px}
+  /* 手机上手更粗：分割线手柄与触摸区都要放大（手指点不中等于没有） */
+  .lines .ln{border-top-width:2px;height:0}
+  .lines .ln::after{width:56px;height:20px;margin-left:-28px;top:-11px}
+}
+
+/* ==========================================================================
+   ⑤ 横屏手机（视口很矮，宽 561~939 之间）
+   · 这个区间不在 ≤560 的手机规则里，所以预览既不吸顶也不压缩 ——
+     在 667×375 上预览会缩成一条 120px 的缝，调参时完全看不见。
+   · 光卡 vh 不够：375px 高的屏上 28vh 只有 105px，扣掉卡片头就没了。
+     所以给**卡片**和**画布**都定最小高度，并把预览也吸顶。
+   ========================================================================== */
+@media (max-width:939px) and (max-height:520px) and (orientation:landscape){
+  .card-pv{position:sticky;top:var(--bar);z-index:20;min-height:150px}
+  .card-pv .stage{max-height:max(30vh,150px);min-height:140px;padding:6px}
+  .lead{display:none}
+  .tabs{margin-bottom:8px;padding:6px var(--pad)}
+  :root{--bar:52px}
+  .tabs button{height:40px}
+}
+</style>
+</head>
+<body>
+
+<h1>图片拼接与切分 <span class="badge">纯本地处理 · 文件不上传 · 断网可用</span></h1>
+<p class="lead">把多张图拼成一张长图 / 网格图，或者把一张图切成九宫格、长图分段、自定义分割。所有运算都在你自己的浏览器里完成，图片不会离开这台设备。</p>
+
+<!-- ★ 吸顶标签栏：滚到哪儿都能切 -->
+<nav class="tabs">
+  <button type="button" data-tab="stitch" class="on">① 拼接</button>
+  <button type="button" data-tab="split">② 切分</button>
+</nav>
+
+<main class="layout">
+
+  <!-- ==================== 左列 ==================== -->
+  <div class="col-main">
+
+    <!-- 共用队列（两个标签页都要用，所以放在面板外面） -->
+    <section class="card card-queue" id="cardQueue">
+      <h2>图片 <span class="pill" id="count">还没有添加图片</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" id="clear" disabled>清空全部</button>
+      </h2>
+      <div class="drop" id="drop">
+        <div class="m1">点击这里选择图片，或把图片直接拖进来</div>
+        <div class="m2">可以一次选很多张，也可以把文件夹里的图片一起选中拖进来；还支持直接按 Ctrl + V 粘贴截图</div>
+        <input type="file" id="file" multiple accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp">
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="bar" id="orderBar" style="margin-top:10px">
+        <span class="pill" id="selInfo">还没选中哪张</span>
+        <button class="btn ghost sm" id="moveLeft" type="button" disabled title="把选中的这张往前挪一位">← 前移</button>
+        <button class="btn ghost sm" id="moveRight" type="button" disabled title="把选中的这张往后挪一位">后移 →</button>
+        <button class="btn ghost sm" id="removeOne" type="button" disabled title="删掉选中的这张">删除这张</button>
+      </div>
+      <p class="hint" id="orderHint">缩略图左上角的数字就是顺序，<b>导出的顺序完全跟着它走</b>。改顺序有两种办法：<b>电脑上直接拖缩略图</b>；<b>手机（或想精确挪一位）用上面的「← 前移 / 后移 →」</b>。点一下某张会把它选中 —— ② 切分切的就是选中的这张。</p>
+      <div class="msg hidden" id="msg"><span id="msgtxt"></span><button class="x" data-dismiss="msg">×</button></div>
+    </section>
+
+    <!-- ---------------- ① 拼接：左列参数 ---------------- -->
+    <div id="panel-stitch">
+
+      <section class="card card-par">
+        <h2>版式与缩放</h2>
+        <div class="field">
+          <span class="k">拼接方向</span>
+          <div class="seg" id="layout">
+            <button type="button" data-v="v" class="on">竖向拼接</button>
+            <button type="button" data-v="h">横向拼接</button>
+            <button type="button" data-v="grid">网格</button>
+          </div>
+        </div>
+        <div id="gridWrap" class="hidden">
+          <div class="field">
+            <span class="k">行 × 列</span>
+            <div class="in2">
+              <label><span>行</span><input type="number" id="gridRows" min="1" max="12" value="2"></label>
+              <label><span>列</span><input type="number" id="gridCols" min="1" max="12" value="2"></label>
+            </div>
+            <div class="seg" id="gridPreset">
+              <button type="button" data-v="2x2">2 × 2</button>
+              <button type="button" data-v="3x3">3 × 3</button>
+              <button type="button" data-v="2x3">2 行 3 列</button>
+              <button type="button" data-v="3x2">3 行 2 列</button>
+            </div>
+          </div>
+          <div class="field">
+            <span class="k">每格比例</span>
+            <div class="seg" id="cellRatio">
+              <button type="button" data-v="first" class="on">跟第 1 张</button>
+              <button type="button" data-v="1:1">1 : 1</button>
+              <button type="button" data-v="4:3">4 : 3</button>
+              <button type="button" data-v="3:4">3 : 4</button>
+              <button type="button" data-v="16:9">16 : 9</button>
+              <button type="button" data-v="9:16">9 : 16</button>
+            </div>
+          </div>
+          <p class="hint">网格的每格大小一样。格子比例默认跟第一张图走，也可以自己选一个固定比例。</p>
+        </div>
+
+        <div class="field" style="margin-top:8px">
+          <span class="k">每张缩放</span>
+          <div class="seg" id="strategy">
+            <button type="button" data-v="cover" class="on">铺满并裁剪</button>
+            <button type="button" data-v="contain">完整显示留白</button>
+            <button type="button" data-v="uniform">统一边长</button>
+          </div>
+        </div>
+        <p class="hint" id="strategyHint"></p>
+        <p class="hint" id="stitchGoalHint">想做小红书长图？选「竖向拼接」+「统一边长」，出来的就是一张完整长图。</p>
+      </section>
+
+      <section class="card card-par">
+        <h2>外观</h2>
+        <div class="pair">
+          <div class="field"><span class="k">边框</span>
+            <input type="range" id="border" min="0" max="20" step="1" value="0" data-unit="%">
+            <span class="v" id="border-v">0%</span></div>
+          <div class="field"><span class="k">图间距</span>
+            <input type="range" id="gap" min="0" max="20" step="1" value="0" data-unit="%">
+            <span class="v" id="gap-v">0%</span></div>
+        </div>
+        <div class="field"><span class="k">背景色</span>
+          <div class="swatches" id="swatches"></div>
+          <input type="color" id="bgColor" value="#ffffff" title="自己选一个颜色">
+        </div>
+        <p class="hint">边框与间距都是按<b>画布宽度</b>的百分比算的，所以换输出品质时比例不变。</p>
+      </section>
+
+      <section class="card card-par">
+        <h2>清晰度与格式</h2>
+        <div class="field">
+          <span class="k">清晰度</span>
+          <div class="seg" id="quality">
+            <button type="button" data-v="1" class="on">普通 1×</button>
+            <button type="button" data-v="1.5">高清 1.5×</button>
+            <button type="button" data-v="2">超清 2×</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="k">格式</span>
+          <div class="seg" id="outFmt">
+            <button type="button" data-v="png" class="on">PNG</button>
+            <button type="button" data-v="jpeg">JPG</button>
+          </div>
+        </div>
+        <div class="field hidden" id="outQWrap"><span class="k">画质</span>
+          <input type="range" id="outQ" min="40" max="100" step="1" value="92">
+          <span class="v" id="outQ-v">92</span></div>
+      </section>
+
+      <section class="card card-par">
+        <div class="bar">
+          <span class="hint" style="margin:0">参数乱了就一键回到出厂设置。</span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="resetStitch" title="把拼接参数恢复出厂设置">恢复默认</button>
+        </div>
+      </section>
+    </div>
+
+    <!-- ---------------- ② 切分：左列参数 ---------------- -->
+    <div id="panel-split" class="hidden">
+
+      <section class="card card-par">
+        <h2>切法 <span class="pill" id="splitWhich">还没有选中图片</span></h2>
+        <div class="field">
+          <span class="k">怎么切</span>
+          <div class="seg" id="splitMode">
+            <button type="button" data-v="grid" class="on">网格切分</button>
+            <button type="button" data-v="count">长图按段数</button>
+            <button type="button" data-v="maxh">长图按每段高度</button>
+            <button type="button" data-v="custom">自定义分割线</button>
+          </div>
+        </div>
+
+        <div id="splitGridWrap">
+          <div class="field">
+            <span class="k">行 × 列</span>
+            <div class="in2">
+              <label><span>行</span><input type="number" id="splitRows" min="1" max="12" value="3"></label>
+              <label><span>列</span><input type="number" id="splitCols" min="1" max="12" value="3"></label>
+            </div>
+          </div>
+          <div class="bar">
+            <button class="btn ghost sm" type="button" data-preset="3x3">3 × 3 九宫格</button>
+            <button class="btn ghost sm" type="button" data-preset="2x2">2 × 2</button>
+            <button class="btn ghost sm" type="button" data-preset="3x2">3 行 2 列</button>
+            <button class="btn ghost sm" type="button" data-preset="3x1">3 行 1 列</button>
+            <button class="btn ghost sm" type="button" data-preset="1x4">1 行 4 列</button>
+          </div>
+        </div>
+
+        <div id="splitAutoWrap" class="hidden">
+          <div class="field" id="splitCountWrap"><span class="k">切成几段</span>
+            <input type="number" id="splitCount" min="1" max="60" value="3">
+            <span class="hint" style="margin:0">按图片高度均分，余数会自动分给前面几段</span></div>
+          <div class="field hidden" id="splitMaxhWrap"><span class="k">每段最高</span>
+            <input type="number" id="splitMaxh" min="200" max="20000" step="10" value="2000">
+            <span class="hint" style="margin:0">像素。会自动算成几段，保证每段都不超过这个高度</span></div>
+        </div>
+
+        <div id="splitCustomWrap" class="hidden">
+          <p class="hint" id="customHint">先点下面的「加一条分割线」画出一条，然后<b>直接拖画布上的虚线</b>改位置；往下拖到边缘可以删掉它。</p>
+          <div class="bar">
+            <button class="btn ghost sm" type="button" id="addLine">加一条分割线</button>
+            <button class="btn ghost sm" type="button" id="clearLines">清空分割线</button>
+          </div>
+        </div>
+
+        <div class="field" style="margin-top:8px">
+          <span class="k">输出画幅</span>
+          <div class="seg" id="splitFrame">
+            <button type="button" data-v="orig" class="on">原图</button>
+            <button type="button" data-v="1:1">1 : 1</button>
+            <button type="button" data-v="4:3">4 : 3</button>
+            <button type="button" data-v="3:4">3 : 4</button>
+            <button type="button" data-v="16:9">16 : 9</button>
+          </div>
+        </div>
+        <p class="hint" id="frameHint">选「原图」时切的就是整张图。选了别的画幅会先裁出一块 —— 那时在画布上<b>拖动照片</b>就能调整取景位置。</p>
+      </section>
+
+      <section class="card card-par">
+        <div class="bar">
+          <span class="hint" style="margin:0">参数乱了就一键回到出厂设置（也会清掉自定义分割线）。</span>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="resetSplit" title="把切分参数恢复出厂设置">恢复默认</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ==================== 右列（吸顶） ==================== -->
+  <aside class="col-side">
+
+    <!-- ---------------- ① 拼接：预览 + 输出 ---------------- -->
+    <div id="side-stitch">
+      <section class="card card-pv" id="pvStitch">
+        <h2>预览
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="expandStitch" type="button" title="铺满整屏，看得更清楚">⤢ 放大看</button>
+        </h2>
+        <div class="field" style="margin-top:2px"><span class="k">预览缩放</span>
+          <input type="range" id="zoom" min="10" max="200" step="5" value="100" data-unit="%">
+          <span class="v" id="zoom-v">100%</span></div>
+        <div class="stage" id="stitchStage">
+          <canvas id="stitchcv"></canvas>
+          <div class="ph" id="stitchph">加几张图之后，这里会实时显示拼起来的样子</div>
+        </div>
+        <p class="hint">预览只是缩小显示，<b>不会影响导出尺寸</b>。想看得更清楚可以拉上面的缩放，或点「放大看」。</p>
+      </section>
+
+      <section class="card card-exp">
+        <h2>输出与导出</h2>
+        <div class="sizebox" id="stitchSize">还没有可以拼的图。</div>
+        <div class="bar" style="margin-top:12px">
+          <button class="btn primary" id="exportStitch" disabled>导出这一张 → 下载</button>
+        </div>
+        <div class="prog"><i id="bar"></i></div>
+        <div class="pstat" id="pstat">还没有开始处理。</div>
+        <div class="msg hidden" id="emsg"><span id="emsgtxt"></span><button class="x" data-dismiss="emsg">×</button></div>
+      </section>
+    </div>
+
+    <!-- ---------------- ② 切分：预览 + 导出 ---------------- -->
+    <div id="side-split" class="hidden">
+      <section class="card card-pv" id="pvSplit">
+        <h2>预览
+          <span class="spacer"></span>
+          <button class="btn ghost sm" id="expandSplit" type="button" title="铺满整屏，看得更清楚">⤢ 放大看</button>
+        </h2>
+        <div class="stage" id="splitStage">
+          <div class="cvwrap">
+            <canvas id="splitcv"></canvas>
+            <div class="lines" id="splitLines"></div>
+          </div>
+          <div class="ph" id="splitph">先在上面加一张图，再点一下选中它</div>
+        </div>
+        <div class="field" style="margin-top:6px"><span class="k">预览缩放</span>
+          <input type="range" id="splitZoom" min="10" max="200" step="5" value="100" data-unit="%">
+          <span class="v" id="splitZoom-v">100%</span></div>
+        <p class="hint">自定义分割线可以直接<b>拖画布上的虚线</b>改位置。</p>
+      </section>
+
+      <section class="card card-exp">
+        <h2>导出</h2>
+        <div class="field"><span class="k">文件名前缀</span>
+          <input type="text" id="prefix" value="" placeholder="可留空" maxlength="20"></div>
+        <p class="hint" id="prefixHint">切出来的文件会按顺序命名，例如 <b>01.png</b>、<b>02.png</b>。</p>
+        <div class="sizebox" id="splitSize">还没有选中的图片。</div>
+        <p class="hint" id="splitOrderHint">切片按<b>阅读顺序</b>编号：网格是从左到右、从上到下；长图分段是从上往下。</p>
+        <div class="bar" style="margin-top:12px">
+          <button class="btn primary" id="exportZip" disabled>打包全部切片 → 下载 ZIP</button>
+          <button class="btn ghost" id="exportOne" disabled>只下载第 1 片</button>
+        </div>
+        <div class="prog"><i id="sbar"></i></div>
+        <div class="pstat" id="spstat">还没有开始处理。</div>
+        <div class="msg hidden" id="semsg"><span id="semsgtxt"></span><button class="x" data-dismiss="semsg">×</button></div>
+      </section>
+    </div>
+  </aside>
+</main>
+
+<footer>纯本地处理 · 文件不上传 · 断网可用 ｜ 拼接与切分都是像素级搬运，同尺寸时不做重采样</footer>
+
+<script>
+(function(){
+'use strict';
+
+/* ==== PURE-CORE-START ==== */
+/* ---------- 数值与尺寸换算（extOf 在上面，同属 PURE-CORE 段） ---------- */
+function clampNum(v, lo, hi){
+  v = Number(v);
+  if(!isFinite(v)) v = lo;
+  return Math.min(hi, Math.max(lo, v));
+}
+
+/* 纯计算区：不碰 DOM、不碰浏览器 API，可以整段抽到 Node 的 vm 里跑单测。
+   全部用 var / function 声明，末尾统一挂到 globalThis 上给自检脚本用。 */
+function extOf(name){ var m = /\.([a-z0-9]+)$/i.exec(name || ''); return m ? m[1].toLowerCase() : ''; }
+/* ==== PURE-CORE-END ==== */
+
+var CRC_TABLE = (function(){
+  var t = new Uint32Array(256);
+  for(var n = 0; n < 256; n++){
+    var c = n;
+    for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(buf){
+  var c = 0xFFFFFFFF;
+  for(var i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function buildZip(files){
+  var enc = new TextEncoder();
+  var now = new Date();
+  var dosTime = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)) & 0xFFFF;
+  var dosDate = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate()) & 0xFFFF;
+  var parts = [], central = [];
+  var offset = 0;
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var nameBytes = enc.encode(f.name);
+    var crc = crc32(f.data);
+    var size = f.data.length;
+    var lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);
+    lh.setUint16(4, 20, true);
+    lh.setUint16(6, 0x0800, true);
+    lh.setUint16(8, 0, true);
+    lh.setUint16(10, dosTime, true);
+    lh.setUint16(12, dosDate, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameBytes.length, true);
+    lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+    var ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true);
+    ch.setUint16(12, dosTime, true);
+    ch.setUint16(14, dosDate, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint16(30, 0, true);
+    ch.setUint16(32, 0, true);
+    ch.setUint16(34, 0, true);
+    ch.setUint16(36, 0, true);
+    ch.setUint32(38, 0, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+    offset += 30 + nameBytes.length + size;
+  }
+  var cdSize = 0;
+  for(var j = 0; j < central.length; j++) cdSize += central[j].length;
+  var eocd = new DataView(new ArrayBuffer(22));
+  eocd.setUint32(0, 0x06054b50, true);
+  eocd.setUint16(4, 0, true);
+  eocd.setUint16(6, 0, true);
+  eocd.setUint16(8, files.length, true);
+  eocd.setUint16(10, files.length, true);
+  eocd.setUint32(12, cdSize, true);
+  eocd.setUint32(16, offset, true);
+  eocd.setUint16(20, 0, true);
+  var all = parts.concat(central);
+  all.push(new Uint8Array(eocd.buffer));
+  return new Blob(all, { type: 'application/zip' });
+}
+
+/* 优先 createImageBitmap（显式要求按 EXIF 方向解码），失败再退回 <img>。
+   release* 用来「处理完立刻放手」，避免批量处理时内存越吃越多。 */
+function releaseBmp(b){
+  if(!b) return;
+  if(typeof b.close === 'function'){ try{ b.close(); }catch(e){} }
+  else if(b.tagName === 'IMG'){ b.src = ''; }
+}
+
+function releaseCanvas(c){
+  if(!c) return;
+  try{ c.width = 0; c.height = 0; }catch(e){}
+}
+
+function decodeViaImg(file){
+  return new Promise(function(res, rej){
+    var url = URL.createObjectURL(file);
+    var img = new Image();
+    img.onload = function(){ URL.revokeObjectURL(url); res(img); };
+    img.onerror = function(){ URL.revokeObjectURL(url); rej(new Error('这张图片打不开')); };
+    img.src = url;
+  });
+}
+
+function decodeFile(file){
+  if(window.createImageBitmap){
+    return createImageBitmap(file, { imageOrientation:'from-image' })
+      .catch(function(){ return createImageBitmap(file); })
+      .catch(function(){ return decodeViaImg(file); });
+  }
+  return decodeViaImg(file);
+}
+
+function newCanvas(w, h){
+  var c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+
+/* ===================== 编码 / 目标体积 ===================== */
+function canvasToBlob(c, type, q){
+  return new Promise(function(res, rej){
+    if(!c.toBlob){ rej(new Error('这个浏览器不支持导出图片')); return; }
+    try{
+      c.toBlob(function(b){ b ? res(b) : rej(new Error('导出失败（可能是尺寸超出浏览器上限）')); }, type, q);
+    }catch(e){ rej(new Error('导出失败：' + e.message)); }
+  });
+}
+
+function fmtSize(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+/* ==== STITCH-GEOM-START ==== */
+/* ==========================================================================
+   纯计算区：不碰 DOM、不碰浏览器 API —— 自检会把这一整段抽进 Node 的 vm 里真跑。
+   ==========================================================================
+   本工具所有"画布多大 / 格子在哪 / 图怎么摆 / 切片怎么分"的算术都集中在这里，
+   应用层只负责把算出来的矩形原样交给 canvas.drawImage。
+
+   为什么把算术全挤到这里：这两件事都出过血案（截图 / 拼接类工具的通病）——
+     ① 预览按缩小画布算一遍、导出按原图算一遍 → 两套几何，界面说一套、成品是另一套。
+        本工具的规矩是：**几何函数接受一个 scale，所有取整都在最终 scale 上做**。
+        界面显示的尺寸 = 用导出 scale 算出来的那个数，导出也用同一个调用 → 天生一致。
+     ② 切分余数被"平均"掉 → 1000 像素切 3 段变成 334/334/334，合计 1002，
+        最后一片越界被截断，读者看到的是"最后一段少 2 像素"。
+        本工具的规矩是：**任何切分都必须满足 sum(sizes) === total**，见 evenSplit。
+   ========================================================================== */
+
+/* 数值夹取：clampNum 来自 img-batch 的 PURE-CORE（原样照搬，见构建脚本），
+   这里只补几个本工具自己的小工具。 */
+function clampInt(v, lo, hi){
+  return Math.round(clampNum(v, lo, hi));
+}
+function intOr(v, d){
+  var n = parseInt(v, 10);
+  return isFinite(n) ? n : d;
+}
+function sumOf(a){
+  var s = 0;
+  for(var i = 0; i < a.length; i++) s += a[i];
+  return s;
+}
+function aspectOf(s){
+  return (s && s.w > 0 && s.h > 0) ? (s.w / s.h) : 1;
+}
+
+/* ==========================================================================
+   ① 均匀分配：把 total 切成 parts 段，**余数必须被吃干净**
+   ==========================================================================
+   这是整个工具的硬底线。规则定死：前 rem 段各多 1 像素。
+     evenSplit(1000, 3) → [334, 333, 333]   （合计 1000）
+     evenSplit(1000, 4) → [250, 250, 250, 250]
+     evenSplit(999,  4) → [250, 250, 250, 250]
+   ⚠️ 不要写 Math.round(total/parts) 那种：那是"每段一样"的近似，
+      合计必然偏离 total，最后一段会被截断（或者画布右侧留一条缝）。 */
+function evenSplit(total, parts){
+  total = Math.max(0, Math.round(total));
+  parts = Math.max(1, Math.round(parts));
+  if(parts > total && total > 0) parts = total;   // 不能切出 0 像素的段
+  var base = Math.floor(total / parts);
+  var rem = total - base * parts;                 // 0 <= rem < parts
+  var out = [];
+  for(var i = 0; i < parts; i++) out.push(base + (i < rem ? 1 : 0));
+  return out;
+}
+
+/* 长图按"每段最大高度"切：先算最少几段（向上取整），再均分。
+   这样每段都 ≤ maxEach（因为段数 ≥ total/maxEach），且合计精确等于 total。 */
+function segmentsForMax(total, maxEach){
+  total = Math.max(1, Math.round(total));
+  maxEach = Math.max(1, Math.round(maxEach));
+  var parts = Math.ceil(total / maxEach);
+  if(parts < 1) parts = 1;
+  if(parts > total) parts = total;
+  return evenSplit(total, parts);
+}
+
+/* 自定义分割线 → 各段尺寸。
+   lines 是分割线位置（像素，相对被切的那块）；0 与 total 由函数自己补上。
+   规则（顺序不能换）：
+     ① 丢掉越界 / 非数字的线（0 和 total 由端点兜着，不算"线"）
+     ② 排序
+     ③ 从前往后推：与前一条已保留线的距离 < minSize 就丢掉这条
+     ④ 最后一条也必须在 total - minSize 之前，否则丢掉（否则末段会被压成细条）
+   返回 { sizes, cuts }，cuts 含 0 与 total，sizes 合计 === total。
+   ⚠️ ① 和 ③④ 有重叠：一条跑到画面外的线，③④ 其实也能拦住（要么"离前一条太近"、
+      要么"离底边太近"）。所以 ① 属于**冗余防御**，不是唯一防线 ——
+      变异测试里删掉 ① 是"咬不住"的（行为没变）。留着是因为它把意图写在最前面，
+      而且将来若改 ③ ④ 的规则，① 还能独立兜住"线在画面外"这件事。 */
+function splitByLines(lines, total, minSize){
+  total = Math.max(1, Math.round(total));
+  minSize = Math.max(1, Math.round(minSize || 1));
+  var pts = [];
+  for(var i = 0; i < (lines || []).length; i++){
+    var v = Math.round(Number(lines[i]));
+    if(!isFinite(v)) continue;
+    if(v <= 0 || v >= total) continue;
+    pts.push(v);
+  }
+  pts.sort(function(a, b){ return a - b; });
+  var keep = [0];
+  for(var k = 0; k < pts.length; k++){
+    var v2 = pts[k];
+    if(v2 - keep[keep.length - 1] < minSize) continue;
+    if(v2 > total - minSize) continue;
+    keep.push(v2);
+  }
+  keep.push(total);
+  var sizes = [];
+  for(var j = 1; j < keep.length; j++) sizes.push(keep[j] - keep[j - 1]);
+  return { sizes: sizes, cuts: keep };
+}
+
+/* ==========================================================================
+   ② 网格切分
+   ==========================================================================
+   行列尺寸都用 evenSplit，所以：sum(cols) === W、sum(rows) === H，
+   每个格子的 x/y 是**累积和**（不是 col*w），右侧与底部严丝合缝、不会出现缝或重叠。 */
+function splitGrid(W, H, rows, cols){
+  W = Math.max(1, Math.round(W));
+  H = Math.max(1, Math.round(H));
+  rows = clampInt(rows, 1, 12);
+  cols = clampInt(cols, 1, 12);
+  var ws = evenSplit(W, cols);
+  var hs = evenSplit(H, rows);
+  var cells = [], idx = 0, y = 0;
+  for(var r = 0; r < rows; r++){
+    var x = 0;
+    for(var c = 0; c < cols; c++){
+      cells.push({ index: idx++, row: r, col: c, x: x, y: y, w: ws[c], h: hs[r] });
+      x += ws[c];
+    }
+    y += hs[r];
+  }
+  return { W: W, H: H, cols: ws, rows: hs, cells: cells };
+}
+
+/* 长图自动切段 / 自定义分割线：都是"整宽、纵向叠"。
+   返回的 slices 里每片都是 { x:0, y, w:W, h } —— 源矩形与目标矩形**同尺寸**，
+   所以导出时是逐像素搬运，不经过重采样。 */
+function splitVertical(W, H, sizes){
+  W = Math.max(1, Math.round(W));
+  H = Math.max(1, Math.round(H));
+  var out = [], y = 0;
+  for(var i = 0; i < sizes.length; i++){
+    var h = Math.max(1, Math.round(sizes[i]));
+    out.push({ index: i, x: 0, y: y, w: W, h: h });
+    y += h;
+  }
+  return out;
+}
+
+/* 统一的切分入口。mode: 'grid' | 'count' | 'maxh' | 'custom' */
+function splitPlan(W, H, mode, opt){
+  opt = opt || {};
+  W = Math.max(1, Math.round(W));
+  H = Math.max(1, Math.round(H));
+  if(mode === 'grid'){
+    var g = splitGrid(W, H, intOr(opt.rows, 2), intOr(opt.cols, 2));
+    return { W: W, H: H, slices: g.cells, cells: g.cells, cols: g.cols, rows: g.rows, mode: 'grid' };
+  }
+  var sizes;
+  if(mode === 'count'){
+    sizes = evenSplit(H, clampInt(opt.count, 1, 60));
+  } else if(mode === 'maxh'){
+    sizes = segmentsForMax(H, clampInt(opt.maxH, 1, 200000));
+  } else {
+    var r = splitByLines(opt.lines, H, clampInt(opt.minSize, 1, 200000));
+    sizes = r.sizes;
+  }
+  return { W: W, H: H, slices: splitVertical(W, H, sizes), sizes: sizes, mode: mode || 'count' };
+}
+
+/* ==========================================================================
+   ③ 输出画幅（切分用）：原图 / 1:1 / 4:3 …
+   ==========================================================================
+   只在"画幅 ≠ 原图"时才裁。裁剪框按焦点（focal 0~1）定位、并夹进画面内 ——
+   这样用户能"拖动照片调整取景位置"，而切分永远在被裁好的这块里做。 */
+function frameRect(srcW, srcH, aspect, focalX, focalY){
+  srcW = Math.max(1, Math.round(srcW));
+  srcH = Math.max(1, Math.round(srcH));
+  if(!(aspect > 0)) return { x: 0, y: 0, w: srcW, h: srcH };
+  var w = srcW, h = srcH;
+  if(srcW / srcH > aspect){ w = Math.round(srcH * aspect); }   // 源更宽 → 裁两侧
+  else { h = Math.round(srcW / aspect); }                      // 源更高 → 裁上下
+  w = Math.max(1, Math.min(srcW, w));
+  h = Math.max(1, Math.min(srcH, h));
+  var fx = clampNum(focalX === undefined ? 0.5 : focalX, 0, 1);
+  var fy = clampNum(focalY === undefined ? 0.5 : focalY, 0, 1);
+  var x = Math.max(0, Math.min(srcW - w, Math.round(fx * srcW - w / 2)));
+  var y = Math.max(0, Math.min(srcH - h, Math.round(fy * srcH - h / 2)));
+  return { x: x, y: y, w: w, h: h };
+}
+
+/* 切片文件名：01 / 02 / 03 …（按阅读顺序，位数随总数自动加宽） */
+function sliceName(i, n, prefix, ext){
+  var digits = Math.max(2, String(Math.max(1, n)).length);
+  var s = String(i + 1);
+  while(s.length < digits) s = '0' + s;
+  return (prefix || '') + s + '.' + (ext || 'png');
+}
+
+/* ==========================================================================
+   ④ 单张图在一个格子里的摆法（拼接的核心）
+   ==========================================================================
+   返回值全部是**输出像素**：
+     sx,sy,sw,sh = 从原图上取哪一块（图片自身坐标系，绝对）
+     dx,dy       = 画到格子的哪个位置（**格子内相对坐标**，应用层再加 cell.x/y）
+     dw,dh       = 画多大
+   三种策略：
+     cover   铺满并裁剪：缩放到"两边都盖住"，多出来的部分裁掉。dw=cellW, dh=cellH（填满，不留白）
+     contain 完整显示留白：缩放到"整图都看得见"，居中，四周露背景色
+     uniform 统一边长：沿一条边对齐缩放（竖向按宽、横向按高），另一条边跟着比例走
+   ⚠️ cover 的源矩形是小数、会被重采样 —— 这是"铺满"的必然代价（原图比例和格子比例不一致）。
+      但**当格子尺寸恰好等于原图尺寸时 scale=1、源矩形退化成整图**，
+      此时 sw===dw、sh===dh，drawImage 就是逐像素拷贝（自检里钉了这条）。 */
+function fitInCell(imgW, imgH, cellW, cellH, strategy, focalX, focalY, axis){
+  imgW = Math.max(1, Math.round(imgW));
+  imgH = Math.max(1, Math.round(imgH));
+  cellW = Math.max(1, Math.round(cellW));
+  cellH = Math.max(1, Math.round(cellH));
+
+  if(strategy === 'cover'){
+    // 缩放到两边都盖住格子
+    var s = Math.max(cellW / imgW, cellH / imgH);
+    var sw = Math.min(imgW, cellW / s);
+    var sh = Math.min(imgH, cellH / s);
+    var fx = clampNum(focalX === undefined ? 0.5 : focalX, 0, 1);
+    var fy = clampNum(focalY === undefined ? 0.5 : focalY, 0, 1);
+    // 焦点落在裁剪窗口的中心，再夹回图内
+    var sx = Math.max(0, Math.min(imgW - sw, fx * imgW - sw / 2));
+    var sy = Math.max(0, Math.min(imgH - sh, fy * imgH - sh / 2));
+    return { sx: sx, sy: sy, sw: sw, sh: sh, dx: 0, dy: 0, dw: cellW, dh: cellH };
+  }
+
+  if(strategy === 'uniform'){
+    // 沿统一边缩放：'h' 表示按高度对齐（横向拼接），否则按宽度对齐（竖向拼接 / 兜底）
+    var su = (axis === 'h') ? (cellH / imgH) : (cellW / imgW);
+    var uw = Math.max(1, Math.round(imgW * su));
+    var uh = Math.max(1, Math.round(imgH * su));
+    return { sx: 0, sy: 0, sw: imgW, sh: imgH,
+             dx: Math.round((cellW - uw) / 2), dy: Math.round((cellH - uh) / 2),
+             dw: uw, dh: uh };
+  }
+
+  // contain：整图缩进格子，居中
+  var s2 = Math.min(cellW / imgW, cellH / imgH);
+  var cw = Math.max(1, Math.round(imgW * s2));
+  var ch = Math.max(1, Math.round(imgH * s2));
+  return { sx: 0, sy: 0, sw: imgW, sh: imgH,
+           dx: Math.round((cellW - cw) / 2), dy: Math.round((cellH - ch) / 2),
+           dw: cw, dh: ch };
+}
+
+/* ==========================================================================
+   ⑤ 拼接版式：画布多大 + 每个格子在哪
+   ==========================================================================
+   scale：**唯一的取整尺度**。所有像素值都在这个 scale 上算完、算完就取整。
+     界面显示用 scale = 输出品质倍率（1 / 1.5 / 2）→ 显示的数字就是导出的像素数；
+     预览用 scale = 一个让画布刚好塞进预览框的小倍率 → 相对布局与导出完全一致
+     （因为边框、间距都是比例，只有取整会差 1 像素，看不出来）。
+   返回 W/H 是**最终导出像素**。
+   ========================================================================== */
+function stitchLayout(sizes, opt, scale){
+  opt = opt || {};
+  scale = clampNum(scale, 0.05, 8) || 1;
+  var n = (sizes || []).length;
+  var border = clampNum(opt.border, 0, 0.2);          // 外边距：占内容宽（或高）的比例
+  var gapF = clampNum(opt.gap, 0, 0.2);               // 图间距：同上
+  var strategy = opt.strategy || 'cover';
+  var layout = opt.layout || 'v';
+  var MAXS = 20000;                                    // 单边上限，防止把浏览器算死
+
+  // 格子比例（cover / contain 决定格子长边比例时用）
+  var refAspect = 1;
+  if(opt.cellRatio && opt.cellRatio !== 'first'){
+    if(opt.cellRatio === 'custom'){
+      refAspect = Math.max(1, intOr(opt.cellRatioW, 4)) / Math.max(1, intOr(opt.cellRatioH, 5));
+    } else {
+      var pr = String(opt.cellRatio).split(':');
+      refAspect = (parseFloat(pr[0]) || 1) / (parseFloat(pr[1]) || 1);
+    }
+  } else if(n){
+    refAspect = aspectOf(sizes[0]);
+  }
+  if(!(refAspect > 0) || !isFinite(refAspect)) refAspect = 1;
+
+  // 内容主边（竖向看宽、横向看高、网格看宽）：没指定就取队列里最长的那张
+  function longest(key){
+    var m = 0;
+    for(var i = 0; i < n; i++) m = Math.max(m, Math.round(sizes[i][key] || 0));
+    return m || 1200;
+  }
+  // ⚠️ 主边必须跟着版式走：横向拼接的主边是**高**。
+  //    早先这里不分版式一律取 outW / 最宽，于是横向拼接会把"用户设的 800 高"当成 800 宽用，
+  //    整张图被放大 1.5 倍（真机验收会当成"输出尺寸不对"报上来）。
+  var mainBase = (layout === 'h')
+    ? Math.round(clampNum(opt.outH || longest('h'), 1, 20000))
+    : Math.round(clampNum(opt.outW || longest('w'), 1, 20000));
+  var main = Math.round(clampNum(mainBase * scale, 1, MAXS));
+  var margin = Math.round(border * main);
+  var gapPx = n > 1 ? Math.round(gapF * main) : 0;
+
+  var cells = [], W = 1, H = 1, contentW = 1, contentH = 1;
+
+  if(layout === 'v' || layout === 'h'){
+    // 每格的主边长度
+    var cross = [];
+    for(var k = 0; k < n; k++){
+      var a = aspectOf(sizes[k]);
+      var len;
+      if(strategy === 'uniform') len = (layout === 'v') ? (main / a) : (main * a);
+      else len = (layout === 'v') ? (main / refAspect) : (main * refAspect);
+      cross.push(Math.max(1, Math.round(len)));
+    }
+    var total = sumOf(cross) + gapPx * Math.max(0, n - 1);
+    if(layout === 'v'){ contentW = main; contentH = total; }
+    else { contentW = total; contentH = main; }
+    contentW = Math.max(1, Math.min(MAXS, contentW));
+    contentH = Math.max(1, Math.min(MAXS, contentH));
+    W = contentW + 2 * margin;
+    H = contentH + 2 * margin;
+    var pos = margin;
+    for(var j = 0; j < n; j++){
+      if(layout === 'v'){ cells.push({ x: margin, y: pos, w: contentW, h: cross[j] }); pos += cross[j] + gapPx; }
+      else { cells.push({ x: pos, y: margin, w: cross[j], h: contentH }); pos += cross[j] + gapPx; }
+    }
+  } else {
+    // 网格：先按"内容宽 + 列数"定格子宽，再由格子比例定格子高
+    var rows = clampInt(opt.rows, 1, 12);
+    var cols = clampInt(opt.cols, 1, 12);
+    var cellW = Math.max(1, Math.round((main - gapPx * (cols - 1)) / cols));
+    // ⚠️ 反推内容宽（而不是直接用 main）：否则最右一列会多/少 1~2 像素，露出背景缝
+    contentW = cellW * cols + gapPx * (cols - 1);
+    var cellH = Math.max(1, Math.round(cellW / refAspect));
+    contentH = cellH * rows + gapPx * (rows - 1);
+    contentW = Math.max(1, Math.min(MAXS, contentW));
+    contentH = Math.max(1, Math.min(MAXS, contentH));
+    W = contentW + 2 * margin;
+    H = contentH + 2 * margin;
+    for(var q = 0; q < rows * cols; q++){
+      var r0 = Math.floor(q / cols), c0 = q % cols;
+      cells.push({ x: margin + c0 * (cellW + gapPx), y: margin + r0 * (cellH + gapPx),
+                   w: cellW, h: cellH, slot: q });
+    }
+  }
+  return {
+    W: Math.max(1, Math.round(W)), H: Math.max(1, Math.round(H)),
+    cells: cells, contentW: contentW, contentH: contentH,
+    border: margin, gap: gapPx, layout: layout, strategy: strategy,
+    refAspect: refAspect, scale: scale, used: n
+  };
+}
+
+/* 整张拼接的绘制计划：每个格子 + 每张图的取景参数。
+   focals[i] = { x, y } 是这张图的焦点（0~1，"cover 裁剪时保住哪一块"）。
+   返回的条目里 dx/dy 已经加过 cell.x/y，**就是画布上的绝对坐标**。 */
+function stitchPlan(sizes, opt, scale, focals){
+  var lay = stitchLayout(sizes, opt, scale);
+  var axis = (lay.layout === 'v') ? 'w' : (lay.layout === 'h' ? 'h' : 'auto');
+  var draws = [];
+  for(var i = 0; i < (sizes || []).length; i++){
+    var cell = lay.cells[i];
+    if(!cell) break;   // 图比格子多：多出来的不画（界面上会提示）
+    var f = (focals && focals[i]) || {};
+    var d = fitInCell(sizes[i].w, sizes[i].h, cell.w, cell.h, lay.strategy, f.x, f.y, axis);
+    draws.push({
+      index: i, cell: cell,
+      sx: d.sx, sy: d.sy, sw: d.sw, sh: d.sh,
+      dx: cell.x + d.dx, dy: cell.y + d.dy, dw: d.dw, dh: d.dh
+    });
+  }
+  return { layout: lay, draws: draws, W: lay.W, H: lay.H };
+}
+
+/* 总像素（用于"超过安全线"的提示）。1 像素 4 字节，50MP ≈ 200MB 画布。 */
+function pixelsOf(W, H){
+  return Math.max(0, Math.round(W)) * Math.max(0, Math.round(H));
+}
+
+/* ==== STITCH-GEOM-END ==== */
+
+/* ==========================================================================
+   图片拼接与切分 · 应用层
+   ① 拼接：多张图 → 一张长图 / 网格图
+   ② 切分：一张图 → 九宫格 / 长图分段 / 自定义分割
+   几何算术全在纯计算区（STITCH-GEOM 段），这里只负责读界面、画布、导出。
+   ========================================================================== */
+
+var $ = function(id){ return document.getElementById(id); };
+var items = [], selId = 0, seq = 0, busy = false;
+var PREVIEW_SIDE = 640;          // 每张图留一份缩小副本，预览用它（导出时重新按原图解码）
+var UNSAFE_PX = 120 * 1000 * 1000;   // 超过这个像素数就不许导出（会把标签页拖死）
+var WARN_PX = 50 * 1000 * 1000;      // 超过这个先提示
+
+/* ---------- 出厂默认值（恢复默认与「记住设置」都从这张表取，避免两份默认值漂移） ---------- */
+var S_FACTORY = {
+  layout: 'v', strategy: 'cover', cellRatio: 'first',
+  gridRows: '2', gridCols: '2',
+  border: '0', gap: '0', bg: '#ffffff',
+  quality: '1', outFmt: 'png', outQ: '92', zoom: '100'
+};
+var S_SEGS = { layout: 'v', strategy: 'cover', cellRatio: 'first', quality: '1', outFmt: 'png' };
+var P_FACTORY = {
+  splitMode: 'grid', splitRows: '3', splitCols: '3',
+  splitCount: '3', splitMaxh: '2000', splitFrame: 'orig',
+  prefix: '', splitZoom: '100'
+};
+var P_SEGS = { splitMode: 'grid', splitFrame: 'orig' };
+
+/* ==========================================================================
+   小工具
+   ========================================================================== */
+function esc(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+  });
+}
+function flash(text, kind){
+  $('msgtxt').innerHTML = esc(text);
+  $('msg').className = 'msg ' + (kind || 'ok');
+}
+function showMsg(boxId, txtId, text, kind){
+  $(txtId).innerHTML = esc(text);
+  $(boxId).className = 'msg ' + (kind || 'err');
+}
+function setProgress(barId, statId, p, text){
+  $(barId).style.width = Math.round(Math.max(0, Math.min(1, p)) * 100) + '%';
+  if(text != null) $(statId).textContent = text;
+}
+function segVal(id){
+  var box = $(id);
+  if(!box) return '';
+  var on = box.querySelector('button.on');
+  return on ? (on.getAttribute('data-v') || '') : '';
+}
+function setSeg(id, v){
+  var box = $(id);
+  if(!box || !v) return;
+  var kids = box.querySelectorAll('button');
+  for(var i = 0; i < kids.length; i++) kids[i].classList.toggle('on', kids[i].getAttribute('data-v') === v);
+}
+function qualityScale(){
+  var v = parseFloat(segVal('quality') || '1');
+  return isFinite(v) && v > 0 ? v : 1;
+}
+function splitFmt(){
+  // 切分固定输出 PNG：切片是**逐像素搬运**，只有无损容器才不白白掉一次画质。
+  return { fmt: 'png', mime: 'image/png', ext: 'png', q: undefined };
+}
+function bgColor(){
+  var c = $('bgColor').value;
+  return /^#[0-9a-f]{6}$/i.test(c) ? c : '#ffffff';
+}
+
+/* ==========================================================================
+   队列
+   ========================================================================== */
+function selIndex(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return i;
+  return -1;
+}
+function selItem(){ var i = selIndex(); return i < 0 ? null : items[i]; }
+function listSizes(){
+  var a = [];
+  for(var i = 0; i < items.length; i++) a.push({ w: items[i].w, h: items[i].h });
+  return a;
+}
+function listFocals(){
+  var a = [];
+  for(var i = 0; i < items.length; i++) a.push({ x: items[i].fx, y: items[i].fy });
+  return a;
+}
+/* 缩略图与预览共用同一份缩小副本：只解一次，省内存也省时间 */
+function makePreview(bmp){
+  var s = Math.min(1, PREVIEW_SIDE / Math.max(bmp.width, bmp.height));
+  var w = Math.max(1, Math.round(bmp.width * s)), h = Math.max(1, Math.round(bmp.height * s));
+  var c = newCanvas(w, h);
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(bmp, 0, 0, w, h);
+  return c;
+}
+function updateCount(){
+  var it = selItem();
+  var idx = selIndex();
+  $('count').textContent = items.length ? ('共 ' + items.length + ' 张') : '还没有添加图片';
+  $('splitWhich').textContent = it ? ('切分：' + it.name + '（' + it.w + ' × ' + it.h + '）') : '还没有选中图片';
+  $('selInfo').textContent = it
+    ? ('已选中第 ' + (idx + 1) + ' / ' + items.length + ' 张')
+    : (items.length ? '还没选中哪张（点一下缩略图）' : '还没选中哪张');
+}
+/* ←/→ 换位：手机拖拽不可靠，所以必须有一条"点按钮就能挪一位"的路。
+   规则和拖拽完全一致 —— 都是改 items 数组的顺序，导出（拼贴顺序 / 切片命名 / 并排顺序）跟着它走。 */
+function moveSelected(delta){
+  var i = selIndex();
+  if(i < 0 || busy) return;
+  var j = i + delta;
+  if(j < 0 || j >= items.length) return;
+  var t = items[i];
+  items[i] = items[j];
+  items[j] = t;
+  renderAll();
+}
+function syncOrderBar(){
+  var i = selIndex(), n = items.length;
+  $('moveLeft').disabled = busy || i <= 0;
+  $('moveRight').disabled = busy || i < 0 || i >= n - 1;
+  $('removeOne').disabled = busy || i < 0;
+}
+function whyCantOpen(names){
+  var first = names[0] || '';
+  var e = extOf(first).toLowerCase();
+  var head = names.length === 1 ? ('「' + first + '」') : (names.length + ' 张（如「' + first + '」）');
+  if(e === 'heic' || e === 'heif'){
+    return head + ' 是 iPhone 的 HEIC 格式，浏览器读不了。请先在手机「照片」里导出成 JPG，或换一张。';
+  }
+  return head + ' 读不出来。常见原因与办法：① HEIC（iPhone 截图/照片）→ 先在手机里导出成 JPG；'
+       + '② 网页图只存下了缩略图/半张 → 重新保存原图；③ 文件损坏或后缀名不对 → 换一张试试。';
+}
+function addFiles(fileList){
+  var files = Array.prototype.slice.call(fileList || []);
+  if(!files.length) return;
+  var accepted = [], skipped = [];
+  for(var i = 0; i < files.length; i++){
+    var f = files[i];
+    var t = (f.type || '').toLowerCase();
+    var e = extOf(f.name);
+    if(t === 'image/jpeg' || t === 'image/png' || t === 'image/webp'
+       || e === 'jpg' || e === 'jpeg' || e === 'png' || e === 'webp') accepted.push(f);
+    else skipped.push(f.name);
+  }
+  if(!accepted.length){
+    var looksLikeFolder = files.some(function(f){ return !f.type && !extOf(f.name); });
+    flash(looksLikeFolder
+      ? '这些不是图片文件。如果拖的是整个文件夹，请打开文件夹、把里面的图片一起选中再拖进来。'
+      : '这些文件都不是 JPG / PNG / WebP 图片，没有添加。', 'warn');
+    return;
+  }
+  busy = true; syncButtons();
+  var done = 0, failed = [];
+  function step(){
+    if(done >= accepted.length){
+      busy = false; syncButtons();
+      if(items.length && selIndex() < 0) selId = items[0].id;
+      renderAll();
+      var m = '已添加 ' + accepted.length + ' 张图片。';
+      if(skipped.length) m += ' 已忽略 ' + skipped.length + ' 个不是图片的文件（常见原因：拖进来的是整个文件夹，请把里面的图片一起选中）。';
+      if(failed.length) m += ' 有 ' + failed.length + ' 张打不开：' + whyCantOpen(failed);
+      flash(m, failed.length ? 'warn' : 'ok');
+      return;
+    }
+    var f = accepted[done];
+    $('count').textContent = '正在读取图片 ' + (done + 1) + ' / ' + accepted.length + ' …';
+    decodeFile(f).then(function(bmp){
+      items.push({
+        id: ++seq, file: f, name: f.name,
+        w: bmp.width, h: bmp.height,
+        prev: makePreview(bmp),
+        fx: 0.5, fy: 0.5,          // 取景焦点（cover 裁剪时用）
+        status: ''
+      });
+      done++;
+      if(done % 6 === 0) renderAll();
+      setTimeout(step, 0);
+    }).catch(function(){
+      failed.push(f.name);
+      done++;
+      setTimeout(step, 0);
+    });
+  }
+  step();
+}
+function removeItem(id){
+  var i = 0;
+  for(; i < items.length; i++) if(items[i].id === id) break;
+  if(i >= items.length) return;
+  releaseCanvas(items[i].prev);
+  items.splice(i, 1);
+  if(selId === id) selId = items.length ? items[Math.min(i, items.length - 1)].id : 0;
+  renderAll();
+}
+function clearAll(){
+  for(var i = 0; i < items.length; i++) releaseCanvas(items[i].prev);
+  items = []; selId = 0;
+  renderAll();
+  setProgress('bar', 'pstat', 0, '还没有开始处理。');
+  setProgress('sbar', 'spstat', 0, '还没有开始处理。');
+}
+function syncButtons(){
+  var has = items.length > 0;
+  $('clear').disabled = !has || busy;
+  $('exportStitch').disabled = !has || busy || !stitchSafe().ok;
+  $('exportZip').disabled = !has || busy || !selItem();
+  $('exportOne').disabled = items.length < 1 || busy || !selItem();
+  syncOrderBar();
+}
+
+/* ---------- 缩略图（含拖动排序） ---------- */
+function renderThumbs(){
+  var box = $('thumbs'), html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    html += '<div class="thumb' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '" title="' + esc(it.name) + '">'
+          +   '<img src="' + it.prev.toDataURL('image/png') + '" alt="">'
+          +   '<span class="no">' + (i + 1) + '</span>'
+          +   '<button type="button" class="x" data-del="' + it.id + '" title="移除这张">×</button>'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+
+/* ==========================================================================
+   ① 拼接：参数
+   ========================================================================== */
+function stitchOpt(){
+  return {
+    layout: segVal('layout') || 'v',
+    strategy: segVal('strategy') || 'cover',
+    rows: intOr($('gridRows').value, 2),
+    cols: intOr($('gridCols').value, 2),
+    cellRatio: segVal('cellRatio') || 'first',
+    border: (+$('border').value) / 100,
+    gap: (+$('gap').value) / 100,
+    bg: bgColor(),
+    outW: 0                       // 0 = 自动（取队列里最宽的那张）
+  };
+}
+/* 真实导出尺寸（scale = 清晰度倍率）。界面上显示的数字就是它 —— 与导出用同一个调用。 */
+function stitchReal(){
+  var sizes = listSizes();
+  if(!sizes.length) return null;
+  return stitchLayout(sizes, stitchOpt(), qualityScale());
+}
+/* 安全线检查：返回 { ok, px, msg } */
+function stitchSafe(){
+  var real = stitchReal();
+  if(!real) return { ok: false, px: 0, msg: '' };
+  var px = pixelsOf(real.W, real.H);
+  if(px > UNSAFE_PX){
+    return { ok: false, px: px,
+      msg: '这张图会到 ' + (px / 1e6).toFixed(1) + ' MP（约 ' + Math.round(px * 4 / 1048576) + ' MB 内存），'
+         + '浏览器很可能直接卡死或导出失败。请：把清晰度调到「普通 1×」、减少图片张数、或改用竖向拼接（网格最吃内存）。' };
+  }
+  if(px > WARN_PX){
+    return { ok: true, px: px,
+      msg: '注意：这张图有 ' + (px / 1e6).toFixed(1) + ' MP，导出会比较慢、也很吃内存。建议先调到「普通 1×」试试。' };
+  }
+  return { ok: true, px: px, msg: '' };
+}
+
+/* ==========================================================================
+   ① 拼接：预览
+   ========================================================================== */
+function stageBox(el){
+  var w = (el && el.clientWidth) ? el.clientWidth : 720;
+  return { w: Math.max(120, w - 22), h: Math.max(120, Math.round((window.innerHeight || 800) * 0.6)) };
+}
+/* 统一绘制入口：预览与导出**走同一个函数**，只差 scale 与源图（预览用缩小副本、导出用原图）。
+   srcs[i] = { img, kx, ky }，kx = img.width / 这张图的原图宽。 */
+function drawStitch(ctx, plan, srcs, opt){
+  ctx.fillStyle = (opt && opt.bg) || '#ffffff';
+  ctx.fillRect(0, 0, plan.W, plan.H);
+  for(var i = 0; i < plan.draws.length; i++){
+    var d = plan.draws[i], s = srcs[i];
+    if(!s || !s.img) continue;
+    var sx = d.sx * s.kx, sy = d.sy * s.ky, sw = d.sw * s.kx, sh = d.sh * s.ky;
+    if(!(sw > 0.01 && sh > 0.01)) continue;
+    ctx.drawImage(s.img, sx, sy, sw, sh, d.dx, d.dy, d.dw, d.dh);
+  }
+}
+var pvScaleLast = 1;   // 预览用的 scale（点选某个格子时要把点击坐标换算回去）
+function renderStitch(){
+  var cv = $('stitchcv');
+  var sizes = listSizes();
+  var safe = stitchSafe();
+  if(!sizes.length){
+    cv.width = 1; cv.height = 1; cv.style.width = ''; cv.style.height = '';
+    $('stitchph').classList.remove('hidden');
+    $('stitchSize').innerHTML = '还没有可以拼的图。先在上面加两张试试。';
+    $('stitchGoalHint').classList.remove('hidden');
+    syncButtons();
+    return;
+  }
+  $('stitchph').classList.add('hidden');
+  var opt = stitchOpt();
+  var real = stitchLayout(sizes, opt, qualityScale());
+  var zoom = Math.max(0.1, (+$('zoom').value) / 100);
+  var box = stageBox($('stitchStage'));
+  var fit = Math.min(box.w / real.W, box.h / real.H, 1);
+  var pvScale = qualityScale() * fit * zoom;
+  // ⚠️ 预览要用 **stitchPlan**（带 draws），不是 stitchLayout（只有格子）。
+  //    两个都是同一个 scale 喂进去，所以预览的格子与导出逐个对得上。
+  var pvp = stitchPlan(sizes, opt, pvScale, listFocals());
+  pvScaleLast = pvScale;
+
+  // ⚠️ 预览画布按"能看清"来定，但**所有展示给用户的数字都来自 real（导出 scale）**
+  cv.width = Math.max(1, pvp.W);
+  cv.height = Math.max(1, pvp.H);
+  cv.style.width = ''; cv.style.height = '';
+  var ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  var srcs = [];
+  for(var i = 0; i < items.length; i++){
+    srcs.push({ img: items[i].prev, kx: items[i].prev.width / items[i].w, ky: items[i].prev.height / items[i].h });
+  }
+  drawStitch(ctx, pvp, srcs, opt);
+
+  // ---- 尺寸口径：只用真实导出分辨率 ----
+  var mp = real.W * real.H / 1e6;
+  var kind = { v: '竖向拼接', h: '横向拼接', grid: '网格 ' + opt.rows + ' × ' + opt.cols }[opt.layout] || '竖向拼接';
+  var strat = { cover: '铺满并裁剪', contain: '完整显示留白', uniform: '统一边长' }[opt.strategy] || '铺满并裁剪';
+  var html = '输出尺寸 <b class="big">' + real.W + ' × ' + real.H + '</b> 像素（约 ' + mp.toFixed(1) + ' MP）<br>'
+    + '版式 <b>' + kind + '</b> ｜ 每张 <b>' + strat + '</b> ｜ 清晰度 <b>' + qualityScale() + '×</b> ｜ <b>' + sizes.length + '</b> 张';
+  if(opt.layout === 'grid'){
+    var slots = opt.rows * opt.cols;
+    if(sizes.length > slots) html += '<br><b>注意：</b>网格只有 ' + slots + ' 格，但你放了 ' + sizes.length + ' 张 —— 多出来的 ' + (sizes.length - slots) + ' 张不会出现在成品里。加行/列，或改回竖向拼接。';
+    else if(sizes.length < slots) html += '<br>网格 ' + slots + ' 格，只放了 ' + sizes.length + ' 张，空着的格子会是背景色。';
+  }
+  $('stitchSize').innerHTML = html;
+  if(!safe.ok){
+    showMsg('emsg', 'emsgtxt', safe.msg, 'err');
+  } else if(safe.msg){
+    showMsg('emsg', 'emsgtxt', safe.msg, 'warn');
+  } else {
+    $('emsg').className = 'msg hidden';
+  }
+  syncButtons();
+}
+
+/* ==========================================================================
+   ① 拼接：导出
+   ========================================================================== */
+function downloadBlob(blob, name){
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(url); }, 5000);
+}
+function exportStitch(){
+  if(busy || !items.length) return;
+  var safe = stitchSafe();
+  if(!safe.ok){ showMsg('emsg', 'emsgtxt', safe.msg, 'err'); return; }
+  var opt = stitchOpt();
+  var q = qualityScale();
+  var sizes = listSizes();
+  var plan = stitchPlan(sizes, opt, q, listFocals());
+  var fmtSeg = segVal('outFmt') || 'png';
+  var isPng = fmtSeg === 'png';
+  var mime = isPng ? 'image/png' : 'image/jpeg';
+  var ext = isPng ? 'png' : 'jpg';
+
+  busy = true; syncButtons();
+  setProgress('bar', 'pstat', 0.05, '准备画布 ' + plan.W + ' × ' + plan.H + ' …');
+  var out;
+  try{
+    out = newCanvas(plan.W, plan.H);
+  }catch(e){
+    busy = false; syncButtons();
+    showMsg('emsg', 'emsgtxt', '画布建不出来（' + plan.W + ' × ' + plan.H + ' 太大了）。把清晰度调到 1× 再试。', 'err');
+    return;
+  }
+  var ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.fillStyle = opt.bg;
+  ctx.fillRect(0, 0, plan.W, plan.H);
+
+  // 逐张解码 → 画 → 立刻释放，内存里永远只有一张原图
+  var i = 0;
+  function step(){
+    if(i >= plan.draws.length){
+      setProgress('bar', 'pstat', 0.85, '正在生成图片…');
+      canvasToBlob(out, mime, isPng ? undefined : Math.max(0.4, Math.min(1, (+$('outQ').value) / 100)))
+        .then(function(blob){
+          releaseCanvas(out);
+          downloadBlob(blob, 'stitch-' + plan.W + 'x' + plan.H + '.' + ext);
+          busy = false; syncButtons();
+          setProgress('bar', 'pstat', 1, '已下载：stitch-' + plan.W + 'x' + plan.H + '.' + ext
+            + '（' + fmtSize(blob.size) + '，' + plan.W + ' × ' + plan.H + '）');
+          flash('拼好了，已经下载：' + plan.W + ' × ' + plan.H + ' 像素，' + fmtSize(blob.size), 'ok');
+        })
+        .catch(function(err){
+          releaseCanvas(out);
+          busy = false; syncButtons();
+          setProgress('bar', 'pstat', 0, '生成失败。');
+          showMsg('emsg', 'emsgtxt', '生成失败：' + (err && err.message ? err.message : '未知原因')
+            + '。可以试试把清晰度调低一档。', 'err');
+        });
+      return;
+    }
+    var d = plan.draws[i], it = items[d.index];
+    setProgress('bar', 'pstat', 0.05 + 0.8 * (i / plan.draws.length),
+      '正在画第 ' + (i + 1) + ' / 共 ' + plan.draws.length + ' 张…');
+    decodeFile(it.file).then(function(bmp){
+      ctx.drawImage(bmp, d.sx, d.sy, d.sw, d.sh, d.dx, d.dy, d.dw, d.dh);
+      releaseBmp(bmp);
+      i++;
+      setTimeout(step, 0);
+    }).catch(function(){
+      i++;
+      setTimeout(step, 0);
+    });
+  }
+  step();
+}
+
+/* ==========================================================================
+   ② 切分：参数与几何
+   ========================================================================== */
+function frameAspect(){
+  var v = segVal('splitFrame') || 'orig';
+  if(v === 'orig') return 0;
+  var p = v.split(':');
+  return (parseFloat(p[0]) || 1) / (parseFloat(p[1]) || 1);
+}
+/* 自定义分割线存在 splitLinesPx 里（相对"被切的那块"的像素位置）。
+   换图 / 换画幅后要按比例搬过去，否则会指到画面外。 */
+var splitLinesPx = [];
+var lastFrameH = 0;
+
+function splitOpt(){
+  return {
+    rows: intOr($('splitRows').value, 3),
+    cols: intOr($('splitCols').value, 3),
+    count: intOr($('splitCount').value, 3),
+    maxH: intOr($('splitMaxh').value, 2000),
+    lines: splitLinesPx,
+    minSize: Math.max(8, Math.round(currentFrame().h * 0.01))   // 至少 1% 高、且不少于 8 像素
+  };
+}
+function currentFrame(){
+  var it = selItem();
+  if(!it) return { x: 0, y: 0, w: 1, h: 1 };
+  return frameRect(it.w, it.h, frameAspect(), it.fx, it.fy);
+}
+function currentSplit(){
+  var it = selItem();
+  if(!it) return null;
+  var fr = currentFrame();
+  var plan = splitPlan(fr.w, fr.h, segVal('splitMode') || 'grid', splitOpt());
+  plan.frame = fr;
+  return plan;
+}
+
+/* ==========================================================================
+   ② 切分：预览
+   ========================================================================== */
+var splitDisp = { x: 0, y: 0, w: 1, h: 1 };   // 画布显示区（CSS 像素），分割线定位要用
+function renderSplit(){
+  var it = selItem();
+  var cv = $('splitcv');
+  if(!it){
+    $('splitLines').innerHTML = '';
+    cv.width = 1; cv.height = 1; cv.style.width = ''; cv.style.height = '';
+    $('splitph').classList.remove('hidden');
+    $('splitSize').innerHTML = '还没有选中的图片。';
+    $('splitWhich').textContent = '还没有选中图片';
+    syncButtons();
+    return;
+  }
+  $('splitph').classList.add('hidden');
+  var fr = currentFrame();
+  // 分割线按比例跟着走（换图 / 换画幅时不至于指到画面外）
+  if(lastFrameH > 0 && fr.h !== lastFrameH){
+    for(var k = 0; k < splitLinesPx.length; k++) splitLinesPx[k] = Math.round(splitLinesPx[k] * fr.h / lastFrameH);
+  }
+  lastFrameH = fr.h;
+
+  var plan = currentSplit();
+  var zoom = Math.max(0.1, (+$('splitZoom').value) / 100);
+  var box = stageBox($('splitStage'));
+  var fit = Math.min(box.w / fr.w, box.h / fr.h, 1);
+  var disp = Math.max(0.02, fit * zoom);
+  var cw = Math.max(1, Math.round(fr.w * disp)), ch = Math.max(1, Math.round(fr.h * disp));
+  cv.width = cw; cv.height = ch;
+  cv.style.width = ''; cv.style.height = '';
+  splitDisp = { x: 0, y: 0, w: cw, h: ch };
+
+  var ctx = cv.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  var kx = it.prev.width / it.w, ky = it.prev.height / it.h;
+  ctx.clearRect(0, 0, cw, ch);
+  ctx.drawImage(it.prev, fr.x * kx, fr.y * ky, fr.w * kx, fr.h * ky, 0, 0, cw, ch);
+
+  // 切片边框 + 序号（直接画在画布上，跟导出切法一一对应）
+  if(plan){
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,.92)';
+    ctx.setLineDash([]);
+    var n = plan.slices.length;
+    for(var i = 0; i < n; i++){
+      var s = plan.slices[i];
+      var x0 = s.x * disp, y0 = s.y * disp, w0 = s.w * disp, h0 = s.h * disp;
+      ctx.strokeRect(Math.round(x0) + 0.5, Math.round(y0) + 0.5, Math.max(1, Math.round(w0)), Math.max(1, Math.round(h0)));
+      if(n > 1){
+        var label = String(i + 1);
+        if(label.length < 2) label = '0' + label;
+        var lx = Math.round(x0) + 4, ly = Math.round(y0) + 4;
+        ctx.font = '600 11px -apple-system,"Microsoft YaHei",sans-serif';
+        var tw = ctx.measureText(label).width + 8;
+        ctx.fillStyle = 'rgba(31,35,64,.78)';
+        ctx.fillRect(lx, ly, tw, 15);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, lx + 4, ly + 11);
+      }
+    }
+  }
+
+  // 自定义模式：分割线用 DOM 覆层，手指/鼠标都能拖
+  if((segVal('splitMode') || 'grid') === 'custom'){
+    renderSplitLines(fr, ch, disp);
+  }
+
+  // ---- 尺寸口径：全部是真实像素 ----
+  if(plan){
+    var sumW = 0;
+    var sizes = [];
+    for(var j = 0; j < plan.slices.length; j++) sizes.push(plan.slices[j].w + '×' + plan.slices[j].h);
+    var allSame = sizes.every(function(s){ return s === sizes[0]; });
+    var html = '切出 <b class="big">' + plan.slices.length + '</b> 片 ｜ 每片约 <b>' + (allSame ? sizes[0] : sizes[0] + ' 等')
+      + '</b> 像素<br>被切区域 <b>' + fr.w + ' × ' + fr.h + '</b>（原图 ' + it.w + ' × ' + it.h + '）';
+    // 余数对账：合计必须正好等于被切区域
+    if(plan.sizes) html += ' ｜ 高度合计 <b>' + sumOf(plan.sizes) + '</b> = ' + fr.h;
+    if(plan.mode === 'grid') html += ' ｜ 列宽合计 <b>' + sumOf(plan.cols) + '</b> = ' + fr.w;
+    $('splitSize').innerHTML = html;
+    $('prefixHint').innerHTML = '切出来的文件会按顺序命名，例如 <b>' + esc(sliceName(0, plan.slices.length, $('prefix').value, 'png'))
+      + '</b>、<b>' + esc(sliceName(1, plan.slices.length, $('prefix').value, 'png')) + '</b> …';
+  }
+  syncButtons();
+}
+/* 分割线覆层：位置 = 切口 / 被切高度 × 画布显示高
+   ⚠️ 数量不变时**复用已有元素**（只改 top / 标签），不整体重建。
+   原因：拖拽过程中每个 pointermove 都会调用这里；如果每次 innerHTML 重建，
+   正在被拖的那个元素会被销毁 —— 挂在它身上的 setPointerCapture 随之失效，
+   手指快速滑动移出舞台后事件就断了（触屏上表现为"拖到一半卡住"）。 */
+function renderSplitLines(fr, canvasH, disp){
+  var box = $('splitLines');
+  var minSize = splitOpt().minSize;
+  var cuts = splitByLines(splitLinesPx, fr.h, minSize).cuts;
+  var wanted = [];
+  for(var i = 1; i < cuts.length - 1; i++) wanted.push(cuts[i]);
+  var nodes = box.children;
+  if(!nodes || nodes.length !== wanted.length){
+    // 数量变了（加线 / 删线）才整体重建
+    var html = '';
+    for(var k = 0; k < wanted.length; k++){
+      html += '<div class="ln" data-i="' + (k + 1) + '" data-cut="' + wanted[k]
+            + '" style="top:' + Math.round(wanted[k] * disp) + 'px">'
+            +   '<span class="tag">' + wanted[k] + 'px</span></div>';
+    }
+    box.innerHTML = html;
+    return;
+  }
+  for(var j = 0; j < wanted.length; j++){
+    var el = nodes[j];
+    el.style.top = Math.round(wanted[j] * disp) + 'px';
+    el.setAttribute('data-cut', wanted[j]);
+    el.setAttribute('data-i', j + 1);
+    var tag = el.querySelector('.tag');
+    if(tag) tag.textContent = wanted[j] + 'px';
+  }
+}
+/* 拖分割线：把 clientY 换算成"被切区域里的像素位置"，夹紧后写回 */
+function bindSplitLines(){
+  var box = $('splitLines');
+  var drag = { cut: -1, idx: -1, pointerId: -1 };
+  function posToCut(clientY){
+    var cv = $('splitcv');
+    var r = cv.getBoundingClientRect();
+    if(!r.height) return 0;
+    var frH = currentFrame().h;
+    return Math.max(0, Math.min(frH, Math.round((clientY - r.top) / r.height * frH)));
+  }
+  box.addEventListener('pointerdown', function(e){
+    var ln = e.target.closest ? e.target.closest('.ln') : null;
+    if(!ln || busy) return;
+    e.preventDefault();
+    drag.pointerId = e.pointerId;
+    drag.cut = +ln.getAttribute('data-cut');
+    drag.idx = +ln.getAttribute('data-i');
+    // ⚠️ 捕获在**容器**上，不在那条线本身：容器不会被重建，线会被（数量变化时）。
+    try{ box.setPointerCapture(e.pointerId); }catch(err){}
+    ln.style.borderTopStyle = 'solid';
+  });
+  box.addEventListener('pointermove', function(e){
+    if(drag.pointerId !== e.pointerId || drag.cut < 0) return;
+    e.preventDefault();
+    var fr = currentFrame();
+    var target = posToCut(e.clientY);
+    var minSize = splitOpt().minSize;
+    // 越界处理：拖到最上/最下就删除这条线（比"卡住不放"好用）
+    if(target <= minSize || target >= fr.h - minSize){
+      splitLinesPx.splice(drag.idx - 1, 1);
+      drag.cut = -1; drag.idx = -1; drag.pointerId = -1;
+      try{ box.releasePointerCapture(e.pointerId); }catch(err){}
+      renderSplit();
+      return;
+    }
+    splitLinesPx[drag.idx - 1] = target;
+    drag.cut = target;
+    renderSplit();
+  });
+  function up(e){
+    if(drag.pointerId !== e.pointerId) return;
+    drag.cut = -1; drag.idx = -1; drag.pointerId = -1;
+    try{ box.releasePointerCapture(e.pointerId); }catch(err){}
+    renderSplit();
+  }
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+}
+
+/* ==========================================================================
+   ② 切分：导出
+   ========================================================================== */
+function exportSlices(onlyFirst){
+  if(busy) return;
+  var it = selItem();
+  if(!it){ flash('先在缩略图里点一张要切的图。', 'err'); return; }
+  var plan = currentSplit();
+  if(!plan || !plan.slices.length){ flash('当前没有可切的片。', 'err'); return; }
+  var fmt = splitFmt();
+  var prefix = $('prefix').value || '';
+  var n = plan.slices.length;
+  var fr = plan.frame;
+
+  busy = true; syncButtons();
+  setProgress('sbar', 'spstat', 0.05, '正在解码原图…');
+  decodeFile(it.file).then(function(bmp){
+    var files = [], rows = [];
+    var i = 0;
+    function step(){
+      if(i >= n || (onlyFirst && i >= 1)){
+        // 画完了：打包 / 下载
+        if(!files.length){
+          busy = false; syncButtons();
+          setProgress('sbar', 'spstat', 0, '没有产出任何切片。');
+          return;
+        }
+        releaseBmp(bmp);
+        if(onlyFirst){
+          var one = files[0];
+          downloadBlob(new Blob([one.data], { type: fmt.mime }), one.name);
+          busy = false; syncButtons();
+          setProgress('sbar', 'spstat', 1, '已下载第 1 片：' + one.name + '（' + fmtSize(one.data.length) + '）');
+          flash('已下载第 1 片：' + one.name, 'ok');
+          return;
+        }
+        setProgress('sbar', 'spstat', 0.9, '正在打包 ZIP（' + files.length + ' 片）…');
+        setTimeout(function(){
+          var blob = buildZip(files);
+          var zipName = (prefix || 'slices') + '-' + files.length + '片.zip';
+          downloadBlob(blob, zipName);
+          busy = false; syncButtons();
+          var total = 0;
+          for(var k = 0; k < files.length; k++) total += files[k].data.length;
+          var html = '共 <b>' + files.length + '</b> 片 ｜ 合计 <b>' + fmtSize(total) + '</b> ｜ 打包后 <b>' + fmtSize(blob.size) + '</b><br>'
+            + '被切区域 <b>' + fr.w + ' × ' + fr.h + '</b> ｜ 输出：' + esc(zipName);
+          $('splitSize').innerHTML = html;
+          setProgress('sbar', 'spstat', 1, '打包完成：' + zipName + '（' + fmtSize(blob.size) + '）');
+          flash('切好了：' + files.length + ' 片，已打包成 ' + zipName, 'ok');
+        }, 20);
+        return;
+      }
+      var s = plan.slices[i];
+      setProgress('sbar', 'spstat', 0.05 + 0.8 * (i / n), '正在切第 ' + (i + 1) + ' / 共 ' + n + ' 片…');
+      var c;
+      try{ c = newCanvas(s.w, s.h); }
+      catch(e){ i++; setTimeout(step, 0); return; }
+      var cx = c.getContext('2d');
+      // ⚠️ 源矩形与目标矩形**同尺寸**（s.w × s.h → s.w × s.h）→ 逐像素搬运，不重采样
+      cx.drawImage(bmp, fr.x + s.x, fr.y + s.y, s.w, s.h, 0, 0, s.w, s.h);
+      canvasToBlob(c, fmt.mime, fmt.q).then(function(blob){
+        return blob.arrayBuffer().then(function(buf){
+          files.push({ name: sliceName(i, n, prefix, fmt.ext), data: new Uint8Array(buf) });
+          rows.push({ name: files[files.length - 1].name, w: s.w, h: s.h });
+          releaseCanvas(c);
+          i++;
+          setTimeout(step, 0);
+        });
+      }).catch(function(){
+        releaseCanvas(c);
+        i++;
+        setTimeout(step, 0);
+      });
+    }
+    step();
+  }).catch(function(err){
+    busy = false; syncButtons();
+    setProgress('sbar', 'spstat', 0, '解码失败。');
+    showMsg('semsg', 'semsgtxt', '这张图打不开：' + (err && err.message ? err.message : '未知原因'), 'err');
+  });
+}
+
+/* ==========================================================================
+   ② 切分：拖动照片调取景
+   ========================================================================== */
+function bindSplitPan(){
+  var cv = $('splitcv');
+  var drag = { on: false, pointerId: -1, sx: 0, sy: 0, fx: 0, fy: 0 };
+  cv.addEventListener('pointerdown', function(e){
+    if(busy || !selItem()) return;
+    // 只有"画幅 ≠ 原图"时才有取景可调（原图模式下整张都在，拖了也没意义）
+    if(!(frameAspect() > 0)) return;
+    e.preventDefault();
+    drag.on = true; drag.pointerId = e.pointerId;
+    drag.sx = e.clientX; drag.sy = e.clientY;
+    var it = selItem();
+    drag.fx = it.fx; drag.fy = it.fy;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  cv.addEventListener('pointermove', function(e){
+    if(!drag.on || drag.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    var it = selItem();
+    if(!it) return;
+    var r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    var fr = currentFrame();
+    // 画布上的位移 → 归一化焦点位移（拖的是"照片"，所以方向要反）
+    var dx = (e.clientX - drag.sx) / r.width * (fr.w / it.w);
+    var dy = (e.clientY - drag.sy) / r.height * (fr.h / it.h);
+    it.fx = clampNum(drag.fx - dx, 0, 1);
+    it.fy = clampNum(drag.fy - dy, 0, 1);
+    renderSplit();
+  });
+  function up(e){
+    if(!drag.on) return;
+    drag.on = false; drag.pointerId = -1;
+    renderSplit();
+    saveSettingsSoon();
+  }
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+}
+/* 拼接：在预览上拖某张图 = 调它的取景焦点（只对「铺满并裁剪」有效果） */
+function bindStitchFocal(){
+  var cv = $('stitchcv');
+  var drag = { on: false, pointerId: -1, idx: -1, sx: 0, sy: 0, fx: 0, fy: 0 };
+  function cellAt(clientX, clientY){
+    var sizes = listSizes();
+    if(!sizes.length) return -1;
+    var r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) return -1;
+    var plan = stitchPlan(sizes, stitchOpt(), pvScaleLast, listFocals());
+    // 画布 CSS 尺寸与内部像素可能不同（缩放），按比例换算
+    var px = (clientX - r.left) / r.width * plan.W;
+    var py = (clientY - r.top) / r.height * plan.H;
+    for(var i = 0; i < plan.draws.length; i++){
+      var c = plan.draws[i].cell;
+      if(px >= c.x && px < c.x + c.w && py >= c.y && py < c.y + c.h) return i;
+    }
+    return -1;
+  }
+  cv.addEventListener('pointerdown', function(e){
+    if(busy || segVal('strategy') !== 'cover') return;
+    var idx = cellAt(e.clientX, e.clientY);
+    if(idx < 0) return;
+    e.preventDefault();
+    drag.on = true; drag.pointerId = e.pointerId; drag.idx = idx;
+    drag.sx = e.clientX; drag.sy = e.clientY;
+    drag.fx = items[idx].fx; drag.fy = items[idx].fy;
+    try{ cv.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  cv.addEventListener('pointermove', function(e){
+    if(!drag.on || drag.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    var it = items[drag.idx];
+    if(!it) return;
+    var r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    var plan = stitchPlan(listSizes(), stitchOpt(), pvScaleLast, listFocals());
+    var d = plan.draws[drag.idx];
+    if(!d) return;
+    // 位移换算成"原图里的比例"
+    var dxN = (e.clientX - drag.sx) / r.width * plan.W / Math.max(1, d.sw);
+    var dyN = (e.clientY - drag.sy) / r.height * plan.H / Math.max(1, d.sh);
+    it.fx = clampNum(drag.fx - dxN, 0, 1);
+    it.fy = clampNum(drag.fy - dyN, 0, 1);
+    renderStitch();
+  });
+  function up(e){
+    if(!drag.on) return;
+    drag.on = false; drag.pointerId = -1; drag.idx = -1;
+    renderStitch();
+  }
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+}
+
+/* ==========================================================================
+   缩略图拖动排序（鼠标 + 触屏同一套 pointer 事件）
+   ========================================================================== */
+function bindThumbDrag(){
+  var box = $('thumbs');
+  var st = { on: false, id: 0, pointerId: -1, x0: 0, y0: 0, moved: false };
+  function idxFromPoint(x, y){
+    var els = box.querySelectorAll('.thumb');
+    for(var i = 0; i < els.length; i++){
+      var r = els[i].getBoundingClientRect();
+      if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
+    }
+    // 落在空白处：按最近的算（这样往列表末尾拖也能命中）
+    var best = -1, bestD = 1e9;
+    for(var j = 0; j < els.length; j++){
+      var rr = els[j].getBoundingClientRect();
+      var d = Math.abs(x - (rr.left + rr.width / 2)) + Math.abs(y - (rr.top + rr.height / 2));
+      if(d < bestD){ bestD = d; best = j; }
+    }
+    return best;
+  }
+  box.addEventListener('pointerdown', function(e){
+    if(busy) return;
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if(del) return;   // 删除按钮走自己的 click
+    var t = e.target.closest ? e.target.closest('.thumb') : null;
+    if(!t) return;
+    st.on = true; st.id = +t.getAttribute('data-id');
+    st.pointerId = e.pointerId; st.x0 = e.clientX; st.y0 = e.clientY; st.moved = false;
+  });
+  box.addEventListener('pointermove', function(e){
+    if(!st.on || st.pointerId !== e.pointerId) return;
+    if(!st.moved){
+      if(Math.abs(e.clientX - st.x0) + Math.abs(e.clientY - st.y0) < 7) return;
+      st.moved = true;
+      var cur = box.querySelector('.thumb[data-id="' + st.id + '"]');
+      if(cur) cur.classList.add('drag');
+    }
+    e.preventDefault();
+    var to = idxFromPoint(e.clientX, e.clientY);
+    if(to < 0) return;
+    var from = 0;
+    for(var i = 0; i < items.length; i++) if(items[i].id === st.id){ from = i; break; }
+    if(from === to) return;
+    var moved = items.splice(from, 1)[0];
+    items.splice(to, 0, moved);
+    renderThumbs(); renderStitch(); renderSplit();
+  });
+  function up(e){
+    if(!st.on) return;
+    var wasDrag = st.moved;
+    st.on = false; st.moved = false; st.pointerId = -1;
+    var t = box.querySelector('.thumb[data-id="' + st.id + '"]');
+    if(t) t.classList.remove('drag');
+    if(!wasDrag){
+      // 没拖动 = 点选
+      selId = st.id;
+      splitLinesPx = []; lastFrameH = 0;
+      renderAll();
+    } else {
+      renderAll();
+    }
+  }
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+}
+
+/* ==========================================================================
+   记住设置（localStorage，全部 try/catch —— 隐私模式 / 某些 file:// 会直接抛）
+   ========================================================================== */
+var SETTINGS_KEY = 'img-stitch.settings.v1';
+function lsGet(){ try{ return window.localStorage; }catch(e){ return null; } }
+function loadStoredSettings(){
+  var ls = lsGet();
+  if(!ls) return null;
+  try{
+    var raw = ls.getItem(SETTINGS_KEY);
+    if(!raw) return null;
+    var obj = JSON.parse(raw);
+    return (obj && typeof obj === 'object') ? obj : null;
+  }catch(e){ return null; }
+}
+function forgetSettings(){
+  var ls = lsGet();
+  if(!ls) return;
+  try{ ls.removeItem(SETTINGS_KEY); }catch(e){}
+}
+function settingsSnapshot(){
+  var st = { ctrls: {}, segs: {} };
+  for(var k in S_FACTORY){
+    if(!Object.prototype.hasOwnProperty.call(S_FACTORY, k)) continue;
+    var el = $(k);
+    if(el) st.ctrls[k] = String(el.value);
+  }
+  for(var k2 in P_FACTORY){
+    if(!Object.prototype.hasOwnProperty.call(P_FACTORY, k2)) continue;
+    var el2 = $(k2);
+    if(el2) st.ctrls[k2] = String(el2.value);
+  }
+  for(var s in S_SEGS) if(Object.prototype.hasOwnProperty.call(S_SEGS, s)) st.segs[s] = segVal(s);
+  for(var s2 in P_SEGS) if(Object.prototype.hasOwnProperty.call(P_SEGS, s2)) st.segs[s2] = segVal(s2);
+  st.bg = bgColor();
+  return st;
+}
+var saveTimer = null;
+function saveSettingsSoon(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    saveTimer = null;
+    var ls = lsGet();
+    if(!ls) return;
+    try{ ls.setItem(SETTINGS_KEY, JSON.stringify(settingsSnapshot())); }catch(e){}
+  }, 400);
+}
+function restoreSettings(){
+  var st = loadStoredSettings();
+  if(!st) return false;
+  if(st.ctrls){
+    for(var k in st.ctrls){
+      if(!Object.prototype.hasOwnProperty.call(st.ctrls, k)) continue;
+      var el = $(k);
+      if(el) el.value = st.ctrls[k];
+    }
+  }
+  if(st.segs){
+    for(var s in st.segs){
+      if(!Object.prototype.hasOwnProperty.call(st.segs, s)) continue;
+      setSeg(s, st.segs[s]);
+    }
+  }
+  if(st.bg && /^#[0-9a-f]{6}$/i.test(st.bg)) $('bgColor').value = st.bg;
+  return true;
+}
+function resetStitchOpts(){
+  for(var k in S_FACTORY){
+    if(!Object.prototype.hasOwnProperty.call(S_FACTORY, k)) continue;
+    var el = $(k);
+    if(el) el.value = S_FACTORY[k];
+  }
+  for(var s in S_SEGS) if(Object.prototype.hasOwnProperty.call(S_SEGS, s)) setSeg(s, S_SEGS[s]);
+}
+function resetSplitOpts(){
+  for(var k in P_FACTORY){
+    if(!Object.prototype.hasOwnProperty.call(P_FACTORY, k)) continue;
+    var el = $(k);
+    if(el) el.value = P_FACTORY[k];
+  }
+  for(var s in P_SEGS) if(Object.prototype.hasOwnProperty.call(P_SEGS, s)) setSeg(s, P_SEGS[s]);
+  splitLinesPx = []; lastFrameH = 0;
+  for(var i = 0; i < items.length; i++){ items[i].fx = 0.5; items[i].fy = 0.5; }
+}
+
+/* ==========================================================================
+   界面联动
+   ========================================================================== */
+function syncRangeLabels(){
+  ['border', 'gap', 'zoom', 'outQ', 'splitZoom'].forEach(function(id){
+    var el = $(id), out = $(id + '-v');
+    if(el && out) out.textContent = el.value + (el.getAttribute('data-unit') || '');
+  });
+  // 恢复默认后按钮上的"选中态"可能跟 value 不一致，这里只同步数值标签
+}
+function syncVisibility(){
+  var layout = segVal('layout') || 'v';
+  $('gridWrap').classList.toggle('hidden', layout !== 'grid');
+  var strat = segVal('strategy') || 'cover';
+  $('strategyHint').innerHTML = ({
+    cover: '铺满并裁剪：每张图缩放到<b>填满格子</b>，多出来的部分裁掉、不留白。默认就是这个 —— 拼出来最整齐。'
+         + '<br>在预览上<b>拖动某张图</b>可以调整它裁哪一块（保住的区域）。',
+    contain: '完整显示留白：整张图都看得见，空出来的地方填背景色。适合"不能裁掉任何内容"的场合。',
+    uniform: layout === 'h'
+      ? '统一边长：每张按<b>同样的高度</b>缩放，宽度各随其比例 —— 横向拼接时上下边缘自然对齐。'
+      : '统一边长：每张按<b>同样的宽度</b>缩放，高度各随其比例 —— 竖向拼接时长图更自然（小红书长图用这个）。'
+  })[strat] || '';
+
+  var fmt = segVal('outFmt') || 'png';
+  $('outQWrap').classList.toggle('hidden', fmt === 'png');
+
+  var mode = segVal('splitMode') || 'grid';
+  $('splitGridWrap').classList.toggle('hidden', mode !== 'grid');
+  $('splitAutoWrap').classList.toggle('hidden', mode !== 'count' && mode !== 'maxh');
+  $('splitMaxhWrap').classList.toggle('hidden', mode !== 'maxh');
+  $('splitCustomWrap').classList.toggle('hidden', mode !== 'custom');
+  $('splitCountWrap').classList.toggle('hidden', mode !== 'count');
+
+  var fa = frameAspect();
+  $('frameHint').innerHTML = fa > 0
+    ? '当前会先把原图裁成 <b>' + segVal('splitFrame') + '</b> 的比例，再切。<b>在画布上拖动照片</b>可以调整取景位置。'
+    : '选「原图」时切的就是整张图。选了别的画幅会先裁出一块 —— 那时在画布上<b>拖动照片</b>就能调整取景位置。';
+
+  $('swatches').querySelectorAll('button').forEach(function(b){
+    b.classList.toggle('on', b.getAttribute('data-c') === bgColor());
+  });
+}
+function renderAll(){
+  updateCount();
+  renderThumbs();
+  syncVisibility();
+  syncRangeLabels();
+  renderStitch();
+  renderSplit();
+  syncButtons();
+  saveSettingsSoon();
+}
+
+/* ==========================================================================
+   事件绑定
+   ========================================================================== */
+var BG_PRESETS = ['#ffffff', '#f6f7fb', '#000000', '#1f2340', '#f2f4fa', '#eaf1ff', '#fff8e8', '#fdeeee'];
+function bindAll(){
+  // 标签页
+  document.querySelector('.tabs').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-tab]');
+    if(!b) return;
+    var tab = b.getAttribute('data-tab');
+    document.querySelectorAll('.tabs button').forEach(function(x){ x.classList.toggle('on', x === b); });
+    $('panel-stitch').classList.toggle('hidden', tab !== 'stitch');
+    $('panel-split').classList.toggle('hidden', tab !== 'split');
+    // 布局改版后，右列（预览 / 导出）跟左列参数是两个独立的块，
+    // 所以要一起切 —— 这是**纯显示管道**，不碰任何参数或导出逻辑。
+    $('side-stitch').classList.toggle('hidden', tab !== 'stitch');
+    $('side-split').classList.toggle('hidden', tab !== 'split');
+    // 切换后重排一次：隐藏期间 clientWidth 是 0，画布尺寸会算错
+    if(tab === 'stitch') renderStitch(); else renderSplit();
+    /* 切完标签回到页面顶部。
+       二选一的取舍，明确选"回顶"：
+         · 两个标签的内容高度不一样，切到更矮的那个时浏览器会把 scrollY 夹到新的最大滚动距离，
+           看起来像"自己跳了一下"，位置不确定；
+         · 回顶是**可预期**的：新标签的内容就从最上面开始，配合吸顶标签栏不会迷失。
+       用 try/catch 兜住老浏览器（scrollTo 带 options 在很老的 Safari 上不认）。 */
+    try{ window.scrollTo(0, 0); }catch(e){ window.scrollTo(0, 0); }
+  });
+  // 「放大看」：把预览卡铺满整屏（手机上 28vh 太小，看不清就不敢调参数）
+  function bindExpand(btnId, rerender){
+    var btn = $(btnId);
+    if(!btn) return;
+    btn.addEventListener('click', function(){
+      var card = btn.closest('.card-pv');
+      if(!card) return;
+      var full = card.classList.toggle('full');
+      btn.textContent = full ? '✕ 收起' : '⤢ 放大看';
+      rerender();   // 画布可用宽度变了，重排一次
+    });
+  }
+  bindExpand('expandStitch', renderStitch);
+  bindExpand('expandSplit', renderSplit);
+
+  // 选图
+  $('drop').addEventListener('click', function(){ if(!busy) $('file').click(); });
+  $('file').addEventListener('change', function(){ addFiles(this.files); this.value = ''; });
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(busy) return;
+    var dt = e.dataTransfer;
+    if(dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+  window.addEventListener('paste', function(e){
+    if(busy) return;
+    var its = (e.clipboardData && e.clipboardData.items) || [];
+    var fs = [];
+    for(var i = 0; i < its.length; i++){
+      if(its[i].kind !== 'file') continue;
+      var f = its[i].getAsFile();
+      if(f) fs.push(f);
+    }
+    if(fs.length) addFiles(fs);
+  });
+  $('thumbs').addEventListener('click', function(e){
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if(del && !busy){ e.stopPropagation(); removeItem(+del.getAttribute('data-del')); }
+  });
+  $('clear').addEventListener('click', function(){ if(!busy) clearAll(); });
+  // ←/→ 换位（手机必用：拖拽在触屏上不可靠）
+  $('moveLeft').addEventListener('click', function(){ moveSelected(-1); });
+  $('moveRight').addEventListener('click', function(){ moveSelected(1); });
+  $('removeOne').addEventListener('click', function(){
+    var it = selItem();
+    if(it && !busy) removeItem(it.id);
+  });
+
+  // 分段按钮（通用）
+  function bindSeg(id, after){
+    var box = $(id);
+    if(!box) return;
+    box.addEventListener('click', function(e){
+      var b = e.target.closest('button[data-v]');
+      if(!b || busy) return;
+      box.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+      b.classList.add('on');
+      if(after) after(b.getAttribute('data-v'));
+    });
+  }
+  bindSeg('layout', function(){ renderAll(); });
+  bindSeg('strategy', function(){ renderAll(); });
+  bindSeg('cellRatio', function(){ renderAll(); });
+  bindSeg('quality', function(){ renderAll(); });
+  bindSeg('outFmt', function(){ renderAll(); });
+  bindSeg('splitMode', function(){ lastFrameH = 0; renderAll(); });
+  bindSeg('splitFrame', function(){ splitLinesPx = []; lastFrameH = 0; renderAll(); });
+
+  // 网格预设
+  $('gridPreset').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-v]');
+    if(!b || busy) return;
+    var p = b.getAttribute('data-v').split('x');
+    $('gridRows').value = p[0];
+    $('gridCols').value = p[1];
+    renderAll();
+  });
+  // 切分预设
+  document.querySelectorAll('[data-preset]').forEach(function(b){
+    b.addEventListener('click', function(){
+      if(busy) return;
+      setSeg('splitMode', 'grid');
+      var p = b.getAttribute('data-preset').split('x');
+      $('splitRows').value = p[0];
+      $('splitCols').value = p[1];
+      lastFrameH = 0;
+      renderAll();
+    });
+  });
+
+  // 背景色
+  $('swatches').innerHTML = BG_PRESETS.map(function(c){
+    return '<button type="button" data-c="' + c + '" style="background:' + c + '" title="' + c + '"></button>';
+  }).join('');
+  $('swatches').addEventListener('click', function(e){
+    var b = e.target.closest('button[data-c]');
+    if(!b) return;
+    $('bgColor').value = b.getAttribute('data-c');
+    renderAll();
+  });
+  $('bgColor').addEventListener('input', function(){ renderAll(); });
+
+  // 所有输入控件：改了就重画
+  var inputs = document.querySelectorAll('input,select,textarea');
+  for(var i = 0; i < inputs.length; i++){
+    (function(el){
+      if(el.type === 'file') return;
+      var ev = (el.type === 'checkbox' || el.tagName === 'SELECT') ? 'change' : 'input';
+      el.addEventListener(ev, function(){
+        syncRangeLabels();
+        // 换行列 / 段数 / 画幅这些会改变切法，分割线要作废
+        if(el.id === 'splitRows' || el.id === 'splitCols' || el.id === 'splitCount' || el.id === 'splitMaxh'){
+          lastFrameH = 0;
+        }
+        renderAll();
+      });
+    })(inputs[i]);
+  }
+
+  $('addLine').addEventListener('click', function(){
+    var fr = currentFrame();
+    var minSize = splitOpt().minSize;
+    if(fr.h < minSize * 3){ flash('这张图太矮了，切不出更多段。', 'warn'); return; }
+    var plan = splitByLines(splitLinesPx, fr.h, minSize);
+    // 找最大的那一段，从中间劈开
+    var cuts = plan.cuts, best = 0, bestLen = 0;
+    for(var k = 1; k < cuts.length; k++){
+      var len = cuts[k] - cuts[k - 1];
+      if(len > bestLen){ bestLen = len; best = k; }
+    }
+    if(bestLen < minSize * 2){ flash('再加就太细了，先拖宽一点。', 'warn'); return; }
+    splitLinesPx.push(Math.round((cuts[best - 1] + cuts[best]) / 2));
+    setSeg('splitMode', 'custom');
+    renderAll();
+  });
+  $('clearLines').addEventListener('click', function(){ splitLinesPx = []; renderAll(); });
+
+  $('exportStitch').addEventListener('click', exportStitch);
+  $('exportZip').addEventListener('click', function(){ exportSlices(false); });
+  $('exportOne').addEventListener('click', function(){ exportSlices(true); });
+  $('resetStitch').addEventListener('click', function(){
+    if(busy) return;
+    resetStitchOpts();
+    // ⚠️ 顺手清掉本机记的那份设置：否则"恢复默认 → 立刻关标签页 → 再打开"会捞回旧设置
+    //    （renderAll 里的防抖保存要 400ms 才写，这中间的窗口就是旧的）。
+    forgetSettings();
+    renderAll();
+    flash('拼接参数已恢复默认。', 'ok');
+  });
+  $('resetSplit').addEventListener('click', function(){
+    if(busy) return;
+    resetSplitOpts();
+    forgetSettings();
+    renderAll();
+    flash('切分参数已恢复默认（也清掉了自定义分割线）。', 'ok');
+  });
+  document.addEventListener('click', function(e){
+    var d = e.target.closest ? e.target.closest('[data-dismiss]') : null;
+    if(!d) return;
+    var box = $(d.getAttribute('data-dismiss'));
+    if(box) box.className = 'msg hidden';
+  });
+
+  bindThumbDrag();
+  bindSplitLines();
+  bindSplitPan();
+  bindStitchFocal();
+
+  window.addEventListener('resize', function(){ renderStitch(); renderSplit(); });
+  window.addEventListener('beforeunload', function(e){
+    if(busy){ e.preventDefault(); e.returnValue = ''; }
+  });
+}
+
+/* ==========================================================================
+   启动
+   ========================================================================== */
+var restored = restoreSettings();
+bindAll();
+syncRangeLabels();
+syncVisibility();
+renderAll();
+setProgress('bar', 'pstat', 0, '还没有开始处理。');
+setProgress('sbar', 'spstat', 0, '还没有开始处理。');
+if(restored) flash('已恢复上次用的设置（两块面板各有一个「恢复默认」可以清掉）。', 'ok');
+
+/* 自动化验收入口（**仅供自动化验收，无写权限**：只读访问器 + 纯函数引用）。
+   用途：真机里核对「界面显示的数字 == 导出实测尺寸」，以及跑几何 / ZIP 的回归。 */
+if(typeof globalThis !== 'undefined'){
+  globalThis.__imgStitchTest = {
+    items: function(){ return items; },
+    sizes: listSizes,
+    focals: listFocals,
+    stitchOpt: stitchOpt,
+    splitOpt: splitOpt,
+    currentFrame: currentFrame,
+    currentSplit: currentSplit,
+    stitchReal: stitchReal,
+    stitchSafe: stitchSafe,
+    qualityScale: qualityScale,
+    selectItem: function(id){ selId = id; splitLinesPx = []; lastFrameH = 0; renderAll(); },
+    renderAll: renderAll,
+    exportStitch: exportStitch,
+    exportSlices: exportSlices,
+    getLines: function(){ return splitLinesPx.slice(); },
+    setLines: function(a){ splitLinesPx = (a || []).slice(); lastFrameH = 0; renderAll(); },
+    /* 纯几何（验收脚本要复算） */
+    evenSplit: evenSplit,
+    segmentsForMax: segmentsForMax,
+    splitByLines: splitByLines,
+    splitGrid: splitGrid,
+    splitPlan: splitPlan,
+    frameRect: frameRect,
+    fitInCell: fitInCell,
+    stitchLayout: stitchLayout,
+    stitchPlan: stitchPlan,
+    sliceName: sliceName,
+    pixelsOf: pixelsOf,
+    sumOf: sumOf,
+    buildZip: buildZip,
+    /* 只读探针：尺寸口径核对用 */
+    shownStitchSize: function(){
+      var real = stitchReal();
+      return real ? { W: real.W, H: real.H } : null;
+    },
+    previewCanvas: function(){
+      var cv = $('stitchcv');
+      return { w: cv.width, h: cv.height };
+    },
+    splitCanvas: function(){
+      var cv = $('splitcv');
+      return { w: cv.width, h: cv.height };
+    },
+    SEGS: S_SEGS,
+    PSEGS: P_SEGS
+  };
+}
+
+})();
+</script>
+</body>
+</html>
