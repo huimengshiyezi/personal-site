@@ -1,0 +1,1295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>公众号配图排版 · 一键复制粘进编辑器 · 纯本地处理</title>
+<meta name="description" content="把多张图（含 GIF 动图）排成公众号正文里的多图排版，一键复制粘进编辑器。不用表格、没有边框，全部在浏览器本地完成，图片不上传。">
+<style>
+:root{
+  --bg:#f6f7fb; --card:#fff; --line:#e4e7f0; --text:#1f2340; --muted:#7c819a;
+  --brand:#3f6ef0; --brand2:#eaf1ff; --ok:#1f9d55; --warn:#b7791f; --err:#d64545;
+  --rl:14px; --pad:14px;
+  --pv:677px;      /* 公众号正文宽度。预览就按这个宽度渲染，所见即所得 */
+  --hint:#5b6079;  /* 占位提示的文字色：比 --muted(#7c819a) 深一档，浅底上才看得清 */
+}
+*{box-sizing:border-box}
+html{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font:14px/1.6 -apple-system,"Segoe UI","Microsoft YaHei",system-ui,sans-serif;
+  margin:0 auto;padding:var(--pad);max-width:1180px;-webkit-text-size-adjust:100%}
+h1{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.badge{font-size:11.5px;font-weight:400;color:var(--brand);background:var(--brand2);border-radius:999px;padding:2px 9px;white-space:nowrap}
+.lead{color:var(--muted);font-size:12.5px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--rl);padding:12px;margin:0}
+.card h2{font-size:14.5px;margin:0 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.hint{color:var(--muted);font-size:12px;margin:6px 0 0;line-height:1.7}
+.hint b{color:var(--text)}
+.spacer{flex:1}
+.hidden{display:none!important}
+
+/* ==========================================================================
+   两列：左参数 / 右预览
+   ⚠️ 右列是**定宽 677px**（公众号正文宽度）—— 这是刻意的：
+      预览如果只有 500px 宽，用户判断的是"缩小版的排版"，跟粘过去的样子不是一回事。
+      677 + 间距 + 左列 ≈ 1180，正好放得下。
+   ========================================================================== */
+.layout{display:grid;grid-template-columns:minmax(0,1fr) var(--pv);gap:16px;align-items:start}
+.col-main,.col-side{min-width:0;display:flex;flex-direction:column;gap:10px}
+.col-side{position:sticky;top:12px;align-self:start}
+.col-main .card{padding:10px 12px}
+.col-main .field{margin:6px 0}
+.col-main .card h2{font-size:13.5px;margin-bottom:6px}
+
+/* ---------- 选图 / 队列 ---------- */
+.drop{border:2px dashed #c8cfe4;border-radius:var(--rl);padding:16px 14px;text-align:center;background:#fbfcff;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--brand2)}
+.drop .m1{font-size:14px}
+.drop .m2{font-size:12px;color:var(--muted);margin-top:5px}
+.drop input{display:none}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;min-height:4px}
+.thumb{position:relative;width:64px;height:64px;border-radius:9px;overflow:hidden;border:2px solid transparent;
+  background:#eef1f8;cursor:grab;flex:none;touch-action:none}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+.thumb.drag{opacity:.4}
+.thumb.over{border-color:var(--ok);border-style:dashed}
+.thumb .x{position:absolute;top:0;right:0;width:18px;height:18px;border:0;border-radius:0 6px 0 8px;
+  background:rgba(31,35,64,.72);color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer}
+/* 序号角标在**左上角**（✕ 在右上角，两个不打架） */
+.thumb .no{position:absolute;left:0;top:0;min-width:16px;height:16px;border-radius:0 0 6px 0;
+  background:rgba(63,110,240,.9);color:#fff;font-size:10.5px;line-height:16px;text-align:center;padding:0 3px;pointer-events:none}
+.thumb .gif{position:absolute;left:0;bottom:0;background:rgba(31,157,85,.92);color:#fff;font-size:9.5px;
+  line-height:14px;padding:0 3px;border-radius:0 5px 0 0;pointer-events:none}
+.thumb .jpg{position:absolute;right:0;bottom:0;background:rgba(63,110,240,.92);color:#fff;font-size:9.5px;
+  line-height:14px;padding:0 3px;border-radius:5px 0 0 0;pointer-events:none}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ==========================================================================
+   ★ 粘贴总量预算条（10 MB 上限）
+   <80% 绿 · 80%~100% 橙 · >100% 红。超限时复制按钮降级成"次要 + 警示"。
+   ========================================================================== */
+.budget{margin:0 0 8px;border-radius:10px;padding:9px 11px;background:#f8f9fd;border:1px solid var(--line)}
+.budget .brow{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;font-size:12.5px;line-height:1.6}
+.budget .btxt{color:var(--text)}
+.budget .bpct{margin-left:auto;font-weight:700;font-size:13.5px;letter-spacing:.3px}
+.budget .bbar{height:8px;border-radius:999px;background:#e9ecf5;overflow:hidden;margin-top:7px}
+.budget .bbar>i{display:block;height:100%;width:0;background:var(--ok);transition:width .2s}
+.budget.ok .bpct{color:var(--ok)}
+.budget.warn{background:#fff8e8;border-color:#f0dcae}
+.budget.warn .bbar>i{background:var(--warn)}
+.budget.warn .bpct{color:var(--warn)}
+.budget.over{background:#fdeeee;border-color:#f3c9c9}
+.budget.over .bbar>i{background:var(--err)}
+.budget.over .bpct{color:var(--err)}
+.budget .bmsg{margin:8px 0 0;font-size:12.5px;line-height:1.75;color:inherit}
+.budget.over .bmsg{color:#96201f}
+.budget.warn .bmsg{color:#8a5b00}
+/* 超限时主按钮降级：白底 + 警示色边框，一眼看出"这一下可能失败" */
+.btn.primary.risky{background:#fff;border-color:var(--warn);color:var(--warn)}
+.btn.primary.risky:hover{background:#fff8e8;border-color:var(--warn);color:var(--warn)}
+/* 压缩那一行：按钮 + 质量滑杆 + 撤销，手机上自动换行 */
+.crow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.crow .qwrap{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);min-width:0;flex:1}
+.crow .qwrap input[type=range]{flex:1;min-width:70px;accent-color:var(--brand);margin:0}
+.crow .qwrap .v{min-width:26px;text-align:right}
+
+/* ---------- 控件 ---------- */
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:0 13px;height:34px;font:inherit;
+  font-size:13px;cursor:pointer;color:var(--text);white-space:nowrap}
+.btn:hover{border-color:var(--brand);color:var(--brand)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn:disabled:hover{border-color:var(--line);color:var(--text)}
+.btn.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn.primary:hover{background:#3560dd;color:#fff}
+.btn.ghost{background:#fff}
+.btn.sm{height:30px;font-size:12.5px;padding:0 10px}
+.btn.big{height:42px;font-size:14.5px;font-weight:600;width:100%}
+.field{display:flex;align-items:center;gap:9px;margin:8px 0;flex-wrap:wrap;min-width:0}
+.field>.k{font-size:12.5px;color:var(--muted);flex:none;min-width:56px}
+.field input[type=range]{flex:1;min-width:80px;accent-color:var(--brand);margin:0}
+.field .v{font-size:12.5px;color:var(--muted);min-width:44px;text-align:right;flex:none}
+.field input[type=color]{width:38px;height:30px;padding:1px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.seg{display:inline-flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:#fff;border-radius:8px;height:31px;padding:0 11px;
+  font:inherit;font-size:12.5px;cursor:pointer;color:var(--muted)}
+.seg button:hover{border-color:var(--brand)}
+.seg button.on{background:var(--brand2);border-color:var(--brand);color:var(--brand);font-weight:600}
+.pill{font-size:12px;color:var(--muted);background:#f2f4fa;border-radius:999px;padding:2px 10px}
+
+/* ---------- 预览（真 677px） ---------- */
+.wxstage{position:relative;margin-top:8px;background:repeating-conic-gradient(#f0f2f8 0 25%,#fff 0 50%) 50%/16px 16px;
+  border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto}
+.wxstage .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:22px 16px;
+  color:var(--hint);font-size:13px;line-height:1.8;text-align:center;background:rgba(255,255,255,.72)}
+/* ==========================================================================
+   ★ 空状态（还没加图）
+   --------------------------------------------------------------------------
+   根因：占位提示是 position:absolute → **不贡献高度**；
+         空的时候 #wxwrap 又是 display:none（也不贡献高度）
+         → 舞台只剩 padding：桌面实测 22px、手机 14px；
+         再被 overflow:auto 一裁，提示就只剩半行 + 一条滚动条。
+   修法：空的时候把提示放回**普通流**、关掉 overflow、给一个撑得住的最小高度。
+   `.empty` 由 renderPreview 切换；有图时自动撤掉，滚动行为回到 auto。
+   ========================================================================== */
+.wxstage.empty{overflow:visible;min-height:120px;background:#fbfcff;border-style:dashed}
+.wxstage.empty .ph{position:static;inset:auto;background:transparent}
+/* 这一层就是"公众号正文"：宽度 677，白底，内容原样渲染 */
+.wxwrap{max-width:var(--pv);margin:0 auto;background:#fff;padding:14px;border:1px solid #eceff6;border-radius:6px;min-height:80px}
+.wxwrap .hint{font-size:12px}
+.pvmeta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:6px}
+/* 「放大看」：把预览卡铺满整屏（手机上 32vh 只够看个大概） */
+.card-pv.full{position:fixed;inset:10px;z-index:80;margin:0;overflow:auto;
+  box-shadow:0 18px 50px -12px rgba(31,35,64,.45)}
+.card-pv.full .wxstage{max-height:70vh}
+
+/* ---------- 进度 / 消息 ---------- */
+.msg{margin-top:9px;border-radius:9px;padding:9px 11px;font-size:12.5px;display:flex;gap:8px;align-items:flex-start;line-height:1.7}
+.msg.ok{background:#eefaf1;color:#15683a}
+.msg.warn{background:#fff8e8;color:#8a5b00}
+.msg.err{background:#fdeeee;color:#96201f}
+.msg.info{background:#eef3ff;color:#274b9f}
+.msg .x{margin-left:auto;border:0;background:none;font-size:15px;cursor:pointer;color:inherit;padding:0 2px}
+/* 备用通道：可编辑区，用户自己 Ctrl+C */
+.fallbackBox{margin-top:10px;border:2px solid var(--brand);border-radius:10px;padding:10px;background:#fff;max-height:46vh;overflow:auto}
+footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 0 22px}
+
+/* ==========================================================================
+   窄屏（<1024px）：单列，顺序 = 队列 → 预览 → 参数 → 复制导出
+   靠 display:contents 把卡片提到同一个 flex 竖列里，再用 order 重排
+   （.hidden 带 !important，压得住 display:contents）
+   ========================================================================== */
+@media (max-width:1023px){
+  .layout{display:flex;flex-direction:column;gap:10px}
+  .col-main,.col-side{display:contents}
+  .card-queue{order:1}
+  .card-pv{order:2}
+  .card-par{order:3}
+  .card-exp{order:4}
+}
+
+/* ==========================================================================
+   手机（≤560px）
+   · 预览吸顶并压低 —— 拖滑杆时预览一直在视野里，不用上下翻
+   · 小号按钮 36px（缩略图下面那排换位 / 删除，28px 手指点不中）
+   ========================================================================== */
+@media (max-width:560px){
+  :root{--pad:9px}
+  body{padding:var(--pad)}
+  h1{font-size:17px}
+  .lead{display:none}
+  .seg button{height:29px;padding:0 9px;font-size:12px}
+  .btn{height:32px;padding:0 10px;font-size:12.5px}
+  .btn.sm{height:36px;padding:0 12px;font-size:13px}
+  .btn.big{height:44px}
+  .thumb{width:56px;height:56px}
+  .card-pv{position:sticky;top:0;z-index:20;box-shadow:0 10px 16px -14px rgba(31,35,64,.5)}
+  .wxstage{max-height:32vh;padding:6px}
+  /* ★ 空状态要压过上面那条 max-height：手机上 32vh 有时不到 120px，
+     不写这一条，空状态还是会被 max-height 卡住（虽然比塌陷好，但没必要）。 */
+  .wxstage.empty{max-height:none;min-height:120px}
+  .wxwrap{padding:8px}
+  .card-pv .hint{display:none}
+}
+</style>
+</head>
+<body>
+
+<h1>公众号配图排版 <span class="badge">纯本地处理 · 文件不上传 · 断网可用</span></h1>
+<p class="lead">把多张图（<b>含 GIF 动图</b>）排成公众号正文里的多图排版，一键复制、粘进编辑器就行。不用表格、没有边框。</p>
+
+<main class="layout">
+
+  <!-- ==================== 左列：图片 + 参数 ==================== -->
+  <div class="col-main">
+
+    <section class="card card-queue" id="cardQueue">
+      <h2>① 图片 <span class="pill" id="count">还没有添加图片</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" id="clear" disabled>清空全部</button>
+      </h2>
+      <div class="drop" id="drop">
+        <div class="m1">点击这里选择图片，或把图片直接拖进来</div>
+        <div class="m2">支持 JPG / PNG / GIF / WebP，可以一次选多张，也可以分几次慢慢加</div>
+        <input type="file" id="file" multiple accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+      </div>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="bar" id="orderBar" style="margin-top:10px">
+        <span class="pill" id="selInfo">还没选中哪张</span>
+        <button class="btn ghost sm" id="moveLeft" type="button" disabled title="把选中的这张往前挪一位">← 前移</button>
+        <button class="btn ghost sm" id="moveRight" type="button" disabled title="把选中的这张往后挪一位">后移 →</button>
+        <button class="btn ghost sm" id="removeOne" type="button" disabled title="删掉选中的这张">删除这张</button>
+      </div>
+      <p class="hint" id="orderHint">缩略图左上角的数字就是顺序，<b>粘进公众号的顺序完全跟着它走</b>。改顺序有两种办法：<b>电脑上直接拖缩略图</b>；<b>手机用上面的「← 前移 / 后移 →」</b>。点一下某张会把它选中。</p>
+      <div class="msg hidden" id="msg"><span id="msgtxt"></span><button class="x" data-dismiss="msg">×</button></div>
+    </section>
+
+    <section class="card card-par">
+      <h2>② 版式</h2>
+      <div class="field">
+        <span class="k">一排几张</span>
+        <div class="seg" id="cols">
+          <button type="button" data-v="2" class="on">横排 2 图</button>
+          <button type="button" data-v="3">横排 3 图</button>
+          <button type="button" data-v="1">一行 1 图（大图）</button>
+        </div>
+      </div>
+      <p class="hint" id="colsHint">图比一排多的时候会自动换行，例如 5 张选「横排 2 图」就是 2 + 2 + 1。</p>
+    </section>
+
+    <section class="card card-par">
+      <h2>③ 外观</h2>
+      <div class="field"><span class="k">图间距</span>
+        <input type="range" id="gap" min="0" max="40" step="1" value="8">
+        <span class="v" id="gap-v">8px</span></div>
+      <div class="field"><span class="k">圆角</span>
+        <input type="range" id="radius" min="0" max="30" step="1" value="6">
+        <span class="v" id="radius-v">6px</span></div>
+      <div class="field"><span class="k">对齐</span>
+        <div class="seg" id="align">
+          <button type="button" data-v="left" class="on">靠左</button>
+          <button type="button" data-v="center">居中</button>
+          <button type="button" data-v="right">靠右</button>
+        </div>
+      </div>
+      <div class="field"><span class="k">底色</span>
+        <div class="seg" id="bgMode">
+          <button type="button" data-v="transparent" class="on">透明</button>
+          <button type="button" data-v="white">白色</button>
+          <button type="button" data-v="custom">自定义</button>
+        </div>
+        <input type="color" id="bgColor" value="#f6f7fb" class="hidden" title="自己选一个底色">
+      </div>
+      <p class="hint">间距是<b>两张图之间</b>的距离，最外两侧各留一半。公众号正文底色一般是白的，选「透明」就是跟着正文走。</p>
+    </section>
+
+    <section class="card card-par">
+      <div class="bar">
+        <span class="hint" style="margin:0">参数乱了就一键回到出厂设置。</span>
+        <span class="spacer"></span>
+        <button class="btn ghost" id="resetOpts" title="把版式与外观恢复出厂设置">恢复默认</button>
+      </div>
+    </section>
+  </div>
+
+  <!-- ==================== 右列：预览 + 复制 ==================== -->
+  <aside class="col-side">
+
+    <section class="card card-pv" id="pvCard">
+      <h2>预览 <span class="pill">677px 正文宽</span>
+        <span class="spacer"></span>
+        <button class="btn ghost sm" id="expandPv" type="button" title="铺满整屏，看得更清楚">⤢ 放大看</button>
+      </h2>
+      <div class="wxstage" id="stage">
+        <div class="ph" id="pvph">加上图片之后，这里会按公众号正文的宽度（677px）显示排出来是什么样</div>
+        <div class="wxwrap" id="wxwrap"></div>
+      </div>
+      <div class="pvmeta" id="pvmeta">还没有图片</div>
+      <p class="hint">这就是粘进公众号后的样子。窄屏上会等比缩小，粘过去是按正文宽度自适应的。</p>
+    </section>
+
+    <section class="card card-exp">
+      <h2>④ 复制到公众号</h2>
+
+      <!-- ★ 粘贴总量预算：粘之前就让人知道够不够，别等失败了才猜 -->
+      <div class="budget ok" id="budget">
+        <div class="brow">
+          <span class="btxt" id="budgetText">本次粘贴：图片 0 张 · 合计 0 B / 上限 10.00 MB</span>
+          <span class="bpct" id="budgetPct">0%</span>
+        </div>
+        <div class="bbar"><i id="budgetFill"></i></div>
+        <p class="bmsg hidden" id="budgetMsg"></p>
+      </div>
+      <div class="crow">
+        <button class="btn ghost sm" id="compress" type="button" disabled>把静态图压成 JPG</button>
+        <span class="qwrap" id="jpgQW" title="JPEG 质量：越低越小，看着糊就调高">
+          <input type="range" id="jpgQ" min="60" max="95" step="1" value="85">
+          <span class="v" id="jpgQ-v">85</span>
+        </span>
+        <button class="btn ghost sm" id="restore" type="button" disabled>恢复原图</button>
+      </div>
+      <p class="hint">只压<b>静态图</b>（PNG / JPG / WebP），<b>GIF 一个字节都不碰</b>（压了就变静态图）。压完随时能「恢复原图」。</p>
+
+      <button class="btn primary big" id="copy" disabled>一键复制排版</button>
+      <p class="hint">复制完去公众号编辑器里，光标点在你想要的位置，直接 <b>Ctrl + V</b> 粘贴。图片会跟着一起过去。</p>
+      <p class="hint" id="limitHint"><b>合计别超 10 MB</b>：公众号一次粘贴的图片总量超过约 10 MB，就很可能提示「来源无法识别」。超了先压一下再粘。</p>
+      <div class="bar" style="margin-top:10px">
+        <button class="btn ghost" id="fallback" disabled>复制不了？用这个手选复制</button>
+        <button class="btn ghost" id="exportHtml" disabled>导出 .html</button>
+      </div>
+      <div class="fallbackBox hidden" id="fallbackBox" contenteditable="true" spellcheck="false"></div>
+      <div class="msg hidden" id="logmsg"><span id="logtxt"></span><button class="x" data-dismiss="logmsg">×</button></div>
+      <p class="hint" id="roHint"><b>关于「能不能点开看大图」</b>：微信编辑器里点图片<b>不会放大</b>，这是正常的。粘完请用编辑器右上角的<b>「预览」发到微信</b>，在微信里点图片就能放大、左右滑动看大图。</p>
+    </section>
+  </aside>
+</main>
+
+<footer>纯本地处理 · 文件不上传 · 断网可用 ｜ 不用表格、没有边框 ｜ GIF 原样保留动图</footer>
+
+<script>
+(function(){
+'use strict';
+
+/* ==== PURE-CORE-START ==== */
+/* ---------- 数值与尺寸换算（extOf 在上面，同属 PURE-CORE 段） ---------- */
+function clampNum(v, lo, hi){
+  v = Number(v);
+  if(!isFinite(v)) v = lo;
+  return Math.min(hi, Math.max(lo, v));
+}
+
+function fmtSizeStatic(b){
+  if(b === null || b === undefined) return '-';
+  if(b < 1024) return b + ' B';
+  if(b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(2) + ' MB';
+}
+
+function kbText(bytes){ return fmtSizeStatic(bytes); }
+/* ==== PURE-CORE-END ==== */
+
+/* ==== WX-CORE-START ==== */
+/* ==========================================================================
+   公众号排版 · 唯一的"算"的地方
+   --------------------------------------------------------------------------
+   把「图片队列 + 一排几张 + 间距 / 圆角 / 对齐 / 底色」变成一段**能直接粘进
+   公众号编辑器**的 HTML 字符串。
+
+   全部是纯函数：不碰 DOM、不读全局、不碰 canvas。自检会把这一整段抽进 Node 的
+   vm 里真跑，所以这里一旦算错，自检当场红。
+
+   ★ 三条实测铁律（用户亲手在公众号里验过，别改）：
+     ① 绝对不用 <table> —— 微信编辑器会给表格套一圈难看边框（截图确认过）；
+     ② 容器 font-size:0 / line-height:0 —— 消掉 inline-block 之间的白缝；
+     ③ 图片 display:block / border:0 —— 否则图片底下会多出一条基线缝。
+   ★ GIF 必须原样以 <img src="data:image/gif;base64,…"> 送出去。
+     本文件里**没有任何 canvas**，这是刻意的：过一遍 canvas 就只剩静态首帧了。
+   ========================================================================== */
+
+/* 公众号正文宽度（px）。只用来做预览容器，不写进粘贴的 HTML —— 粘过去是自适应的，
+   写死宽度反而会在窄屏上溢出。 */
+var WX_CONTENT_W = 677;
+
+/* 每行放几张 → 单元格宽度百分比。
+   ⚠️ 必须**向下**取到两位小数。100/3 = 33.3333…：
+      · 写成 33.333333333333336%，三个相加 = 100.00000000000001% → 第三张会被挤到下一行；
+      · 向下取成 33.33%，三个相加 = 99.99% → 稳稳待在一行（那 0.01% 是亚像素，看不出来）。
+   "横排 3 图"最怕的就是第三张掉下去，所以这里故意留万分之一的余量。 */
+function pctOf(cols){
+  var n = Math.round(clampNum(cols, 1, 3));
+  return String(Math.floor(10000 / n) / 100);
+}
+
+/* HTML 转义。只用于 alt（文件名）和导出文档的 <title>：
+   图片地址是 data: 开头，不可能含 " < >，不需要转义（转了反而可能破坏 base64）。 */
+function escHtml(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+}
+
+/* 文件名 → alt 文本：去掉路径、压掉换行与多余空白、截断。
+   alt 是给"图片加载失败时"和读屏用的，不是装饰；带上文件名比留空更有用。 */
+function altOf(name){
+  var s = String(name == null ? '' : name);
+  s = s.replace(/^.*[\\\/]/, '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  if(s.length > 80) s = s.slice(0, 77) + '…';
+  return s;
+}
+
+/* 参数归一化 —— 所有默认值与上下限的**唯一真源**。
+   UI 上的滑杆范围、恢复默认、记住的设置，全都过这里，免得四个地方各写一套数。 */
+function normalizeOpt(raw){
+  raw = raw || {};
+  var align = String(raw.align == null ? 'left' : raw.align);
+  if(align !== 'left' && align !== 'center' && align !== 'right') align = 'left';
+  var bg = String(raw.bg == null ? 'transparent' : raw.bg);
+  // 底色只接受 transparent / #rgb / #rrggbb —— 别的值一律退回透明，
+  // 免得把奇怪的东西拼进 style（那会变成注入面）
+  if(bg !== 'transparent' && !/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(bg)) bg = 'transparent';
+  return {
+    cols: Math.round(clampNum(raw.cols == null ? 2 : raw.cols, 1, 3)),
+    gap: Math.round(clampNum(raw.gap == null ? 8 : raw.gap, 0, 40)),
+    radius: Math.round(clampNum(raw.radius == null ? 6 : raw.radius, 0, 30)),
+    align: align,
+    bg: bg
+  };
+}
+
+/* 出厂默认（「恢复默认」和首次打开都用它） */
+function defaultOpt(){
+  return normalizeOpt({ cols: 2, gap: 8, radius: 6, align: 'left', bg: 'transparent' });
+}
+
+/* 单元格（一张图一格）的样式。
+   ├─ inline-block + width:{百分比}%：一行放 N 张、多了自动换行（不需要任何 flex/grid —— 微信全支持不了）
+   ├─ padding:0 {间距/2}px：左右各半份，两张之间正好是一个完整间距，最外两侧各半份
+   ├─ box-sizing:border-box：padding 不撑破 100%
+   ├─ vertical-align:top：图片长短不一时顶端对齐，不会错位
+   └─ font-size:0 / line-height:0：**消掉 inline-block 之间的白缝**（实测铁律 ②） */
+function cellStyle(cols, gap){
+  var half = Math.round(clampNum(gap, 0, 40)) / 2;
+  return 'display:inline-block;width:' + pctOf(cols) + '%;padding:0 ' + half + 'px;'
+       + 'box-sizing:border-box;vertical-align:top;font-size:0;line-height:0;margin:0';
+}
+
+/* 图片样式：撑满格子、按原比例高、去掉边框与基线缝（实测铁律 ③） */
+function imgStyle(radius){
+  var r = Math.round(clampNum(radius, 0, 30));
+  return 'display:block;width:100%;height:auto;border:0;outline:0;border-radius:' + r + 'px;margin:0';
+}
+
+/* 外层容器样式：字体/行高归零（消白缝）、对齐、底色。
+   ⚠️ 刻意**不加**左右负边距（原型里有，这里去掉）：
+      负边距会让容器比正文宽出「间距」那么多，套上底色就会左右各多出一条色带，
+      窄屏上还可能出现横向滚动。宁可首尾各留半个间距，也不要溢出。 */
+function wrapStyle(opt){
+  var o = normalizeOpt(opt);
+  return 'margin:0;padding:0;font-size:0;line-height:0;text-align:' + o.align
+       + ';border:0;outline:0;background:' + o.bg;
+}
+
+/* ★ 核心：把队列排成一段可以粘进公众号的 HTML。
+   items = [{ url: 'data:image/...;base64,...', alt: '文件名' }]
+   返回**只有一个外层 section** 的片段（粘过去不会多出空段落）。 */
+function buildLayoutHtml(items, opt){
+  var o = normalizeOpt(opt);
+  var list = items || [];
+  if(!list.length) return '';
+  var cells = [];
+  for(var i = 0; i < list.length; i++){
+    var it = list[i] || {};
+    var url = String(it.url == null ? '' : it.url);
+    if(!url) continue;                       // 没有地址的项直接跳过，不留空格子
+    cells.push('<section style="' + cellStyle(o.cols, o.gap) + '">'
+      + '<img src="' + url + '" alt="' + escHtml(altOf(it.alt)) + '" style="' + imgStyle(o.radius) + '" />'
+      + '</section>');
+  }
+  if(!cells.length) return '';
+  return '<section style="' + wrapStyle(o) + '">' + cells.join('') + '</section>';
+}
+
+/* 剪贴板里的 text/plain 那一路：粘到纯文本框时至少能看到"粘贴了几张、什么顺序"。
+   不是给公众号用的（公众号认 text/html 那一路）。 */
+function plainTextOf(items){
+  var list = items || [];
+  var out = [];
+  for(var i = 0; i < list.length; i++) out.push((i + 1) + '. ' + altOf((list[i] || {}).alt));
+  return out.join('\n');
+}
+
+/* 导出 .html 用：包成一个能直接双击打开的完整文档（零外链）。
+   正文照样限制在 677px 内，方便对照公众号里的样子。 */
+function docForExport(html, title){
+  return '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n<meta charset="utf-8">\n'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
+    + '<title>' + escHtml(title || '公众号配图排版') + '</title>\n</head>\n'
+    + '<body style="margin:0;padding:16px;background:#fff">\n'
+    + '<div style="max-width:' + WX_CONTENT_W + 'px;margin:0 auto">' + String(html || '') + '</div>\n'
+    + '</body>\n</html>\n';
+}
+
+/* data URI 里到底装了多少字节（用来提示"总共多大 / 粘过去会不会很慢"）。
+   标准 base64：每 4 个字符 = 3 字节，末尾的 '=' 各扣 1 字节。 */
+function bytesOfDataUrl(url){
+  var s = String(url == null ? '' : url);
+  var k = s.indexOf(';base64,');
+  if(k < 0) return 0;
+  var b = s.slice(k + 8);
+  if(!b.length) return 0;
+  var pad = 0;
+  if(b.charAt(b.length - 1) === '=') pad++;
+  if(b.charAt(b.length - 2) === '=') pad++;
+  return Math.max(0, Math.floor(b.length * 3 / 4) - pad);
+}
+
+/* 队列里所有图片的总字节数 */
+function totalBytesOf(items){
+  var list = items || [];
+  var sum = 0;
+  for(var i = 0; i < list.length; i++) sum += bytesOfDataUrl((list[i] || {}).url);
+  return sum;
+}
+
+/* 微信能不能显示这张图 —— 只放行公众号编辑器吃得下的四种。
+   HEIC 尤其要挡：浏览器或许能读成字节，但粘过去 <img> 是裂的。 */
+function isSupportedUrl(url){
+  return /^data:image\/(png|jpeg|jpg|gif|webp);base64,/i.test(String(url == null ? '' : url));
+}
+
+/* ==========================================================================
+   ★★ 单次粘贴的图片总量上限：约 10 MB
+   --------------------------------------------------------------------------
+   这是**用户真机实测**出来的硬限制，不是猜的：
+     · 8 MB 的 GIF + 其它图  → 粘进公众号失败，提示"来源无法识别"
+     · GIF 压到 3 MB（合计 9 MB 多）→ 成功
+   为什么判"总量"而不是"单张"：
+     有些在线排版工具把图片放在它们自己的服务器上，微信按网址**逐张**去取/上传，
+     所以它们按单张判就行；本工具**不上传**，图片是 base64 内嵌在剪贴板里的，
+     微信得把整段一起解码，于是判的是**总量**。
+   10 MB 是经验安全线，不是官方数字 —— 所以超了也**不禁止**，
+   只是明确说"很可能失败"并把复制按钮降级（见 copyLabelOf）。
+   ========================================================================== */
+var WX_PASTE_LIMIT = 10 * 1048576;   /* 10 MiB = 10,485,760 字节 */
+
+/* 是不是 GIF 动图。★ 这是"绝对不许压缩"的总闸：
+   压缩函数第一件事就拿它早退 —— GIF 过一遍 canvas 就只剩静态首帧了。 */
+function isGifUrl(url){
+  return /^data:image\/gif/i.test(String(url == null ? '' : url));
+}
+
+/* 本次粘贴的"预算"：张数 / 合计字节 / 占比 / 是否超限。
+   ⚠️ 合计用的是**每张图的二进制字节数**（it.bytes，压缩后会变），没填就从 data URI 反算。
+      为什么不用 base64 字符数：微信解码后按图片算，base64 比二进制多出 1/3，
+      用字符数会把 7.5 MB 的图报成 10 MB，白白吓人。 */
+function budgetOf(items){
+  var list = items || [];
+  var total = 0, gif = 0, gifBytes = 0, compressed = 0;
+  for(var i = 0; i < list.length; i++){
+    var it = list[i] || {};
+    var b = Number(it.bytes);
+    if(!isFinite(b) || b < 0) b = bytesOfDataUrl(it.url);
+    total += b;
+    if(isGifUrl(it.origUrl || it.url)){ gif++; gifBytes += b; }
+    if(it.compressed) compressed++;
+  }
+  return {
+    count: list.length,
+    bytes: total,
+    gif: gif,
+    gifBytes: gifBytes,
+    compressed: compressed,
+    limit: WX_PASTE_LIMIT,
+    ratio: WX_PASTE_LIMIT > 0 ? (total / WX_PASTE_LIMIT) : 0,
+    over: total > WX_PASTE_LIMIT
+  };
+}
+
+/* 预算档位：<80% 绿 · 80%~100% 橙 · >100% 红（超限） */
+function budgetLevel(ratio){
+  var r = Number(ratio);
+  if(!isFinite(r) || r < 0) r = 0;
+  if(r > 1) return 'over';
+  if(r >= 0.8) return 'warn';
+  return 'ok';
+}
+
+/* 百分比文案：0.92 → "92%"；超过 100% 照样显示（比如 124%） */
+function budgetPctText(ratio){
+  var r = Number(ratio);
+  if(!isFinite(r) || r < 0) r = 0;
+  return Math.round(r * 100) + '%';
+}
+
+/* 预算条上那行字：「本次粘贴：图片 2 张 · 合计 9.20 MB / 上限 10.00 MB」 */
+function budgetTextOf(b){
+  b = b || budgetOf([]);
+  return '本次粘贴：图片 ' + b.count + ' 张 · 合计 ' + kbText(b.bytes) + ' / 上限 ' + kbText(b.limit);
+}
+
+/* 超限 / 接近上限时的具体建议。做成**纯函数**，好处是这段文案能被断言钉住 ——
+   用户看到的必须是能照着做的每一步，不是一句"失败了"。 */
+function budgetAdviceOf(b){
+  b = b || budgetOf([]);
+  if(b.over){
+    return '合计 ' + kbText(b.bytes) + '，超过公众号单次粘贴上限（约 ' + kbText(b.limit)
+      + '），粘过去很可能「来源无法识别」。建议：① 把大的 GIF 先压到 3 MB 以内'
+      + ' ② 或点下面「把静态图压成 JPG」腾空间 ③ 或减少张数';
+  }
+  if(b.ratio >= 0.8){
+    return '合计 ' + kbText(b.bytes) + '，快到 ' + kbText(b.limit)
+      + ' 上限了。再大就可能粘不过去，建议先压一下或减少张数。';
+  }
+  return '';
+}
+
+/* 复制按钮的文案：超限时不能还写"一键复制"，得让人一眼看出有风险。 */
+function copyLabelOf(b){
+  b = b || budgetOf([]);
+  return b.over ? '仍要复制（可能失败）' : '一键复制排版';
+}
+
+/* 压缩后给用户看的那句：「已压缩 · 原 3.20 MB → 现 280.0 KB」 */
+function compressNoteOf(item){
+  var it = item || {};
+  if(!it.compressed) return '';
+  return '已压缩 · 原 ' + kbText(Number(it.origBytes) || 0) + ' → 现 ' + kbText(Number(it.bytes) || 0);
+}
+
+globalThis.pctOf = pctOf;
+globalThis.escHtml = escHtml;
+globalThis.altOf = altOf;
+globalThis.normalizeOpt = normalizeOpt;
+globalThis.defaultOpt = defaultOpt;
+globalThis.cellStyle = cellStyle;
+globalThis.imgStyle = imgStyle;
+globalThis.wrapStyle = wrapStyle;
+globalThis.buildLayoutHtml = buildLayoutHtml;
+globalThis.plainTextOf = plainTextOf;
+globalThis.docForExport = docForExport;
+globalThis.bytesOfDataUrl = bytesOfDataUrl;
+globalThis.totalBytesOf = totalBytesOf;
+globalThis.isSupportedUrl = isSupportedUrl;
+globalThis.WX_PASTE_LIMIT = WX_PASTE_LIMIT;
+globalThis.WX_CONTENT_W = WX_CONTENT_W;
+globalThis.isGifUrl = isGifUrl;
+globalThis.budgetOf = budgetOf;
+globalThis.budgetLevel = budgetLevel;
+globalThis.budgetPctText = budgetPctText;
+globalThis.budgetTextOf = budgetTextOf;
+globalThis.budgetAdviceOf = budgetAdviceOf;
+globalThis.copyLabelOf = copyLabelOf;
+globalThis.compressNoteOf = compressNoteOf;
+/* ==== WX-CORE-END ==== */
+
+/* ==========================================================================
+   公众号排版 · 应用层（DOM / 事件 / 剪贴板 / 记住设置）
+   纯算术全在 _core.js，这里只负责"把界面的东西凑成参数、把结果画出来"。
+   ========================================================================== */
+
+var items = [];          // [{ id, name, url, bytes }]  url 就是 data:image/...;base64,...
+var selId = 0;
+var uid = 1;
+var busy = false;
+
+var $ = function(id){ return document.getElementById(id); };
+var S_KEY = 'wechat-layout:opt:v1';
+
+/* ---------- 小工具 ---------- */
+function segVal(id){
+  var box = $(id);
+  var on = box ? box.querySelector('button.on') : null;
+  return on ? on.getAttribute('data-v') : '';
+}
+function setSeg(id, v){
+  var box = $(id);
+  if(!box) return;
+  var bs = box.querySelectorAll('button[data-v]');
+  var hit = false;
+  for(var i = 0; i < bs.length; i++){
+    var m = bs[i].getAttribute('data-v') === String(v);
+    bs[i].classList.toggle('on', m);
+    if(m) hit = true;
+  }
+  // 传进来的值不在选项里（例如旧设置）→ 退回第一个，别让整组都没选中
+  if(!hit && bs.length) bs[0].classList.add('on');
+}
+function selItem(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return items[i];
+  return null;
+}
+function selIndex(){
+  for(var i = 0; i < items.length; i++) if(items[i].id === selId) return i;
+  return -1;
+}
+function showIn(boxId, txtId, kind, text){
+  var b = $(boxId);
+  b.className = 'msg ' + kind;
+  $(txtId).textContent = text;
+}
+function hide(boxId){ $(boxId).className = 'msg hidden'; }
+
+/* ---------- 参数：界面 → 纯函数要的形状 ---------- */
+function bgValue(){
+  var mode = segVal('bgMode');
+  if(mode === 'white') return '#ffffff';
+  if(mode === 'custom') return $('bgColor').value || '#f6f7fb';
+  return 'transparent';
+}
+function readOpt(){
+  return normalizeOpt({
+    cols: segVal('cols'),
+    gap: $('gap').value,
+    radius: $('radius').value,
+    align: segVal('align'),
+    bg: bgValue()
+  });
+}
+function syncRangeLabels(){
+  var o = readOpt();
+  $('gap-v').textContent = o.gap + 'px';
+  $('radius-v').textContent = o.radius + 'px';
+  $('bgColor').classList.toggle('hidden', segVal('bgMode') !== 'custom');
+}
+
+/* ---------- 记住设置（只存参数，不存图片：图片太大，存进去会把 localStorage 撑爆） ---------- */
+var saveTimer = 0;
+/* ⚠️ 只有"用户真的改了参数"才写盘。renderAll() 刻意**不**调 saveSoon ——
+   队列的增删改跟设置无关，而且页面一打开就会 renderAll 一次；
+   那次要是也写盘，等于"什么都没改就把默认值写进去了"，
+   "恢复默认 → 重开"这条路的语义就糊了（冒烟里专门有一条钉这个）。 */
+function saveSoon(){
+  if(saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(function(){
+    saveTimer = 0;
+    try{
+      localStorage.setItem(S_KEY, JSON.stringify({
+        cols: segVal('cols'), gap: $('gap').value, radius: $('radius').value,
+        align: segVal('align'), bgMode: segVal('bgMode'), bgColor: $('bgColor').value
+      }));
+    }catch(e){ /* 隐私模式 / 配额满了：记不住就算了，不影响使用 */ }
+  }, 300);
+}
+function restore(){
+  var s = null;
+  try{ s = JSON.parse(localStorage.getItem(S_KEY) || 'null'); }catch(e){ s = null; }
+  if(!s || typeof s !== 'object') return;
+  if(s.cols) setSeg('cols', s.cols);
+  if(s.align) setSeg('align', s.align);
+  if(s.bgMode) setSeg('bgMode', s.bgMode);
+  if(typeof s.gap === 'string' && s.gap !== '') $('gap').value = s.gap;
+  if(typeof s.radius === 'string' && s.radius !== '') $('radius').value = s.radius;
+  if(typeof s.bgColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.bgColor)) $('bgColor').value = s.bgColor;
+}
+/* 「恢复默认」时连本地存的设置一起清掉 ——
+   否则"恢复默认 → 关掉 → 再打开"会把刚清掉的旧值又装回来，用户会以为按钮没生效。
+   ⚠️ 还要**把排队中的保存取消掉**：saveSoon 是 300ms 防抖，
+      不取消的话刚删完就被那个定时器写回去（冒烟里就是这么抓到的）。 */
+function forgetSettings(){
+  if(saveTimer){ clearTimeout(saveTimer); saveTimer = 0; }
+  try{ localStorage.removeItem(S_KEY); }catch(e){}
+}
+
+/* ---------- 图片队列 ---------- */
+function readDataUrl(file){
+  return new Promise(function(res, rej){
+    var r = new FileReader();
+    r.onload = function(){ res(String(r.result || '')); };
+    r.onerror = function(){ rej(r.error || new Error('读取失败')); };
+    r.readAsDataURL(file);
+  });
+}
+function whyCantOpen(name, type){
+  var n = String(name || '');
+  if(/\.(heic|heif)$/i.test(n) || /hei[cf]/i.test(String(type || ''))) {
+    return '「' + n + '」是苹果的 HEIC 格式，公众号编辑器不认。请先在手机「照片」里导出成 JPG 再放进来。';
+  }
+  return '「' + n + '」不是能用的图片格式（只支持 JPG / PNG / GIF / WebP）。';
+}
+function addFiles(list){
+  if(busy) return;
+  var arr = Array.prototype.slice.call(list || []);
+  if(!arr.length) return;
+  busy = true;
+  hide('msg');
+  var skipped = [];
+  (async function(){
+    for(var i = 0; i < arr.length; i++){
+      var f = arr[i];
+      var ok = /^image\/(jpeg|png|gif|webp)$/i.test(f.type || '');
+      if(!ok){ skipped.push(whyCantOpen(f.name, f.type)); continue; }
+      try{
+        var url = await readDataUrl(f);
+        if(!isSupportedUrl(url)){ skipped.push(whyCantOpen(f.name, f.type)); continue; }
+        /* ★ 追加，绝不覆盖已有队列。
+           origUrl / origBytes 留一份原始快照 —— "恢复原图"就靠它，
+           压缩只改 url / bytes，原图永远拿得回来。 */
+        var bytes = bytesOfDataUrl(url);
+        items.push({ id: uid++, name: f.name || ('图片' + (items.length + 1)), url: url, bytes: bytes,
+                     origUrl: url, origBytes: bytes, compressed: false });
+        if(!selId) selId = items[items.length - 1].id;
+      }catch(err){ skipped.push('「' + (f.name || '未知文件') + '」读取失败：' + (err && err.message ? err.message : err)); }
+    }
+    busy = false;
+    if(skipped.length) showIn('msg', 'msgtxt', 'warn', skipped.join('　'));
+    renderAll();
+  })();
+}
+function removeItem(id){
+  var i = 0;
+  for(; i < items.length; i++) if(items[i].id === id) break;
+  if(i >= items.length) return;
+  items.splice(i, 1);
+  if(selId === id) selId = items.length ? items[Math.min(i, items.length - 1)].id : 0;
+  renderAll();
+}
+function clearAll(){
+  items = [];
+  selId = 0;
+  renderAll();
+}
+function moveSelected(d){
+  var i = selIndex();
+  if(i < 0) return;
+  var j = i + d;
+  if(j < 0 || j >= items.length) return;
+  var t = items[i];
+  items[i] = items[j];
+  items[j] = t;
+  renderAll();
+}
+
+/* ---------- 渲染 ---------- */
+function updateCount(){
+  var i = selIndex();
+  $('count').textContent = items.length
+    ? ('共 ' + items.length + ' 张 · ' + kbText(totalBytesOf(items)))
+    : '还没有添加图片';
+  $('selInfo').textContent = i >= 0
+    ? ('已选中第 ' + (i + 1) + ' / ' + items.length + ' 张')
+    : (items.length ? '还没选中哪张（点一下缩略图）' : '还没选中哪张');
+}
+function renderThumbs(){
+  var box = $('thumbs');
+  var html = '';
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    var isGif = /^data:image\/gif/i.test(it.url);
+    var tip = it.name + (it.compressed ? ('（' + compressNoteOf(it) + '）') : '');
+    html += '<div class="thumb' + (it.id === selId ? ' on' : '') + '" data-id="' + it.id + '" title="' + escHtml(tip) + '">'
+          +   '<span class="no">' + (i + 1) + '</span>'
+          +   '<button class="x" type="button" data-del="' + it.id + '" title="删掉这张">✕</button>'
+          +   (isGif ? '<span class="gif">动图</span>' : '')
+          +   (it.compressed ? '<span class="jpg">JPG</span>' : '')
+          +   '<img src="' + it.url + '" alt="" />'
+          + '</div>';
+  }
+  box.innerHTML = html;
+}
+function syncOrderBar(){
+  var i = selIndex(), n = items.length;
+  $('moveLeft').disabled = i <= 0;
+  $('moveRight').disabled = i < 0 || i >= n - 1;
+  $('removeOne').disabled = i < 0;
+}
+function syncButtons(){
+  var has = items.length > 0;
+  $('clear').disabled = !has;
+  $('copy').disabled = !has || busy;
+  $('fallback').disabled = !has || busy;
+  $('exportHtml').disabled = !has || busy;
+  syncOrderBar();
+}
+
+/* 预览：把 _core 生成的**同一段 HTML** 塞进去 —— 预览和粘贴内容走同一条路，
+   所以"预览里是什么样，粘过去就是什么样"不是靠自觉，而是结构上做不到不一致。 */
+function updatePvMeta(){
+  if(!items.length){ $('pvmeta').textContent = '还没有图片'; return; }
+  var o = readOpt();
+  var b = budgetOf(items);
+  $('pvmeta').textContent = b.count + ' 张 · 一排 ' + o.cols + ' 张 · 共 ' + kbText(b.bytes)
+    + (b.gif ? (' · 其中 ' + b.gif + ' 张动图') : '')
+    + (b.compressed ? (' · ' + b.compressed + ' 张已压成 JPG') : '');
+}
+
+/* ---------- ★ 粘贴总量预算（10 MB 上限）+ 压缩腾空间 ---------- */
+function renderBudget(){
+  var b = budgetOf(items);
+  var lv = budgetLevel(b.ratio);
+  $('budget').className = 'budget ' + lv;
+  $('budgetText').textContent = budgetTextOf(b);
+  $('budgetPct').textContent = budgetPctText(b.ratio);
+  $('budgetFill').style.width = Math.max(0, Math.min(100, Math.round(b.ratio * 100))) + '%';
+  var adv = budgetAdviceOf(b);
+  var msg = $('budgetMsg');
+  msg.textContent = adv;
+  msg.classList.toggle('hidden', !adv);
+  /* 超限时主按钮**降级**：文案改成"仍要复制（可能失败）"，样式从 .primary 变成次要 + 警示。
+     仍然可点 —— 用户可能就想赌一把，禁掉反而挡路。 */
+  $('copy').textContent = copyLabelOf(b);
+  $('copy').classList.toggle('risky', b.over);
+  $('compress').disabled = busy || !canCompressAny();
+  $('restore').disabled = busy || !hasCompressed();
+}
+function canCompressAny(){
+  for(var i = 0; i < items.length; i++){
+    if(!isGifUrl(items[i].origUrl) && !items[i].compressed) return true;
+  }
+  return false;
+}
+function hasCompressed(){
+  for(var i = 0; i < items.length; i++) if(items[i].compressed) return true;
+  return false;
+}
+
+/* ★ 唯一允许碰 canvas 的地方。
+   第一条语句就是 GIF 早退 —— 构建脚本会检查「这条早退在、且 getContext / drawImage
+   只能出现在这个函数的范围内」；冒烟会检查「传 GIF 进来时 canvas 创建次数 = 0」。 */
+function compressStillToJpeg(url, quality){
+  if(isGifUrl(url)) return Promise.resolve(null);      /* ★ GIF 一个字节都不碰 */
+  var q = Math.max(0.6, Math.min(0.95, (Number(quality) || 85) / 100));
+  return new Promise(function(resolve){
+    var img = new Image();
+    img.onload = function(){
+      try{
+        var cv = document.createElement('canvas');
+        cv.width = img.naturalWidth || img.width || 0;
+        cv.height = img.naturalHeight || img.height || 0;
+        if(!cv.width || !cv.height){ resolve(null); return; }
+        var ctx = cv.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        cv.toBlob(function(blob){
+          if(!blob){ resolve(null); return; }
+          readDataUrl(blob).then(function(u){
+            resolve({ url: u, bytes: bytesOfDataUrl(u) });
+          }, function(){ resolve(null); });
+        }, 'image/jpeg', q);
+      }catch(e){ resolve(null); }
+    };
+    img.onerror = function(){ resolve(null); };
+    img.src = url;
+  });
+}
+async function compressAll(){
+  if(busy) return;
+  var q = +$('jpgQ').value || 85;
+  var targets = [];
+  for(var i = 0; i < items.length; i++){
+    var it = items[i];
+    if(isGifUrl(it.origUrl)) continue;    /* ★ GIF 永远进不了这个名单 */
+    if(it.compressed) continue;
+    targets.push(it);
+  }
+  if(!targets.length){
+    showIn('logmsg', 'logtxt', 'info', '没有可以压的静态图（GIF 不会被压缩）。');
+    return;
+  }
+  var before = budgetOf(items).bytes;
+  busy = true;
+  syncButtons(); renderBudget();
+  var okCount = 0, saved = 0;
+  for(var k = 0; k < targets.length; k++){
+    showIn('logmsg', 'logtxt', 'info', '正在压缩 ' + (k + 1) + ' / ' + targets.length + ' …');
+    var res = await compressStillToJpeg(targets[k].url, q);
+    /* 只有**确实变小**才替换：小图、或已经是压过的 JPG，重编码反而可能更大 */
+    if(res && res.bytes > 0 && res.bytes < targets[k].bytes){
+      saved += targets[k].bytes - res.bytes;
+      targets[k].url = res.url;
+      targets[k].bytes = res.bytes;
+      targets[k].compressed = true;
+      okCount++;
+    }
+  }
+  busy = false;
+  renderAll();
+  var after = budgetOf(items).bytes;
+  showIn('logmsg', 'logtxt', okCount ? 'ok' : 'info',
+    okCount
+      ? ('✅ 压好了 ' + okCount + ' 张：合计 ' + kbText(before) + ' → ' + kbText(after)
+         + '（省了 ' + kbText(saved) + '）。GIF 没动过。')
+      : ('没有一张变小（可能已经是压过的 JPG，或者图本身很小）。合计仍是 ' + kbText(after) + '。'));
+}
+/* 撤销：把所有压过的图恢复成原文件（url 与字节都回到压缩前） */
+function restoreOrig(){
+  var n = 0;
+  for(var i = 0; i < items.length; i++){
+    if(!items[i].compressed) continue;
+    items[i].url = items[i].origUrl;
+    items[i].bytes = items[i].origBytes;
+    items[i].compressed = false;
+    n++;
+  }
+  if(!n){ showIn('logmsg', 'logtxt', 'info', '没有压过的图。'); return; }
+  renderAll();
+  showIn('logmsg', 'logtxt', 'ok', '已恢复 ' + n + ' 张原图，合计 ' + kbText(budgetOf(items).bytes) + '。');
+}
+function renderPreview(){
+  var wrap = $('wxwrap');
+  var ph = $('pvph');
+  var stage = $('stage');
+  /* ★ 空状态要打上 .empty：占位提示回到普通流、舞台取消 overflow 并撑到 120px。
+     不打的话提示是 absolute（不贡献高度）、wxwrap 又是 display:none（也不贡献），
+     舞台只剩 padding（桌面实测 22px / 手机 14px），再被 overflow:auto 一裁，
+     提示就只剩半行 + 一条滚动条 —— 真机就是这么报上来的。 */
+  stage.classList.toggle('empty', !items.length);
+  if(!items.length){
+    wrap.innerHTML = '';
+    wrap.classList.add('hidden');
+    ph.classList.remove('hidden');
+    updatePvMeta();
+    return;
+  }
+  wrap.classList.remove('hidden');
+  ph.classList.add('hidden');
+  wrap.innerHTML = buildHtmlNow();
+  updatePvMeta();
+}
+/* 只改样式、不重建 DOM —— 拖滑杆时用这条，避免每次都把 base64 重新解析一遍。
+   用的是**和粘贴 HTML 完全相同的三个纯函数**，所以改完的预览 == 改完会粘贴的内容。 */
+function restylePreview(){
+  var wrap = $('wxwrap');
+  var outer = wrap.firstElementChild;
+  if(!outer) return;
+  var o = readOpt();
+  outer.setAttribute('style', wrapStyle(o));
+  var cells = outer.children;
+  for(var i = 0; i < cells.length; i++){
+    cells[i].setAttribute('style', cellStyle(o.cols, o.gap));
+    var img = cells[i].firstElementChild;
+    if(img) img.setAttribute('style', imgStyle(o.radius));
+  }
+}
+function renderAll(){
+  updateCount();
+  renderThumbs();
+  syncRangeLabels();
+  renderPreview();
+  renderBudget();
+  syncButtons();
+  /* 这里**不**写 saveSoon()：队列变化跟"记住设置"没关系，
+     而且启动时会调一次 renderAll —— 那次写盘就等于把默认值当成"用户的设置"存了下来。 */
+}
+
+/* ---------- 生成 / 复制 / 导出 ---------- */
+function coreItems(){
+  var out = [];
+  for(var i = 0; i < items.length; i++) out.push({ url: items[i].url, alt: items[i].name });
+  return out;
+}
+function buildHtmlNow(){ return buildLayoutHtml(coreItems(), readOpt()); }
+
+async function copyLayout(){
+  var html = buildHtmlNow();
+  if(!html){ showIn('logmsg', 'logtxt', 'warn', '先加上图片再复制。'); return; }
+  try{
+    if(!navigator.clipboard || !window.ClipboardItem) throw new Error('这个浏览器没有剪贴板写入接口');
+    await navigator.clipboard.write([ new ClipboardItem({
+      'text/html': new Blob([html], { type: 'text/html' }),
+      'text/plain': new Blob([plainTextOf(coreItems())], { type: 'text/plain' })
+    }) ]);
+    showIn('logmsg', 'logtxt', 'ok',
+      '✅ 已复制 ' + items.length + ' 张的排版（按队列顺序）。去公众号编辑器里点好位置，Ctrl + V 粘贴。'
+      + '　粘完请用右上角「预览」发到微信里，点图片能放大才算真的成了。');
+  }catch(err){
+    var m = (err && err.message) ? err.message : String(err);
+    /* ⚠️ 顺序很重要：先开备用通道（silent，不写提示），再写"为什么失败 + 怎么继续"。
+       反过来的话，备用通道那句 Info 会把失败原因盖掉，用户只看到"已全选"、不知道为啥没复制上。 */
+    showFallback(true);
+    showIn('logmsg', 'logtxt', 'err', '一键复制没成功：' + m
+      + '。　下面的框里已经放好内容并且**全选**了 —— 按 Ctrl + C（手机长按 → 拷贝）一样能粘。');
+  }
+}
+
+/* 备用通道：塞进可编辑区 + 全选。剪贴板被拦（或浏览器太老）时靠这条。
+   先试一次 execCommand('copy')，成功就少让用户按一次键。
+   silent = true 时只准备内容、不写提示（让调用方自己写，免得盖掉失败原因）。 */
+function showFallback(silent){
+  var html = buildHtmlNow();
+  if(!html){ showIn('logmsg', 'logtxt', 'warn', '先加上图片。'); return; }
+  var box = $('fallbackBox');
+  box.innerHTML = html;
+  box.classList.remove('hidden');
+  try{
+    var r = document.createRange();
+    r.selectNodeContents(box);
+    var s = window.getSelection();
+    s.removeAllRanges();
+    s.addRange(r);
+  }catch(e){}
+  var copied = false;
+  try{ copied = document.execCommand && document.execCommand('copy'); }catch(e){ copied = false; }
+  if(silent) return;
+  showIn('logmsg', 'logtxt', copied ? 'ok' : 'info', copied
+    ? '✅ 已复制（走的是兼容通道）。去公众号编辑器里 Ctrl + V 粘贴。'
+    : '上面那个框里已经是排好的内容，并且**已经帮你全选**了 —— 按 Ctrl + C（手机长按 → 拷贝）即可。');
+}
+
+function exportHtml(){
+  var html = buildHtmlNow();
+  if(!html){ showIn('logmsg', 'logtxt', 'warn', '先加上图片。'); return; }
+  var doc = docForExport(html, '公众号配图排版');
+  var blob = new Blob([doc], { type: 'text/html;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '公众号配图排版.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function(){ try{ URL.revokeObjectURL(a.href); }catch(e){} }, 4000);
+  showIn('logmsg', 'logtxt', 'ok', '已导出 .html（双击就能在浏览器里打开，图片是内嵌的，不会丢）。');
+}
+
+/* ---------- 缩略图拖动排序（对着 img-stitch 那套验过的做法） ----------
+   用 pointer 事件而不是 HTML5 拖放：手机上 HTML5 拖放基本不可用，
+   而 pointer 事件鼠标 / 手指都能走同一套逻辑，不用写两份。 */
+function bindThumbDrag(){
+  var box = $('thumbs');
+  var st = { on: false, id: 0, pointerId: -1, x0: 0, y0: 0, moved: false };
+  function idxFromPoint(x, y){
+    var els = box.querySelectorAll('.thumb');
+    for(var i = 0; i < els.length; i++){
+      var r = els[i].getBoundingClientRect();
+      if(x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return i;
+    }
+    // 落在空白处：按最近的算，这样往末尾拖也能命中
+    var best = -1, bestD = 1e9;
+    for(var j = 0; j < els.length; j++){
+      var rr = els[j].getBoundingClientRect();
+      var d = Math.abs(x - (rr.left + rr.width / 2)) + Math.abs(y - (rr.top + rr.height / 2));
+      if(d < bestD){ bestD = d; best = j; }
+    }
+    return best;
+  }
+  box.addEventListener('pointerdown', function(e){
+    if(busy) return;
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if(del) return;                    // 删除按钮走自己的 click
+    var t = e.target.closest ? e.target.closest('.thumb') : null;
+    if(!t) return;
+    st.on = true;
+    st.id = +t.getAttribute('data-id');
+    st.pointerId = e.pointerId;
+    st.x0 = e.clientX; st.y0 = e.clientY; st.moved = false;
+  });
+  box.addEventListener('pointermove', function(e){
+    if(!st.on || st.pointerId !== e.pointerId) return;
+    if(!st.moved){
+      if(Math.abs(e.clientX - st.x0) + Math.abs(e.clientY - st.y0) < 7) return;
+      st.moved = true;
+      var cur = box.querySelector('.thumb[data-id="' + st.id + '"]');
+      if(cur) cur.classList.add('drag');
+    }
+    e.preventDefault();
+    var to = idxFromPoint(e.clientX, e.clientY);
+    if(to < 0) return;
+    var from = 0;
+    for(var i = 0; i < items.length; i++) if(items[i].id === st.id){ from = i; break; }
+    if(from === to) return;
+    /* 拖动过程中就真的改数组（不是只挪 DOM）—— 松手之前预览和导出顺序已经是新的 */
+    var moved = items.splice(from, 1)[0];
+    items.splice(to, 0, moved);
+    renderThumbs();
+    renderPreview();
+  });
+  function up(e){
+    if(!st.on) return;
+    var wasDrag = st.moved;
+    st.on = false; st.moved = false; st.pointerId = -1;
+    var t = box.querySelector('.thumb[data-id="' + st.id + '"]');
+    if(t) t.classList.remove('drag');
+    if(!wasDrag){ selId = st.id; }     // 没拖动 = 点选
+    renderAll();
+  }
+  box.addEventListener('pointerup', up);
+  box.addEventListener('pointercancel', up);
+}
+
+/* ---------- 放大看 ---------- */
+function bindExpand(){
+  var btn = $('expandPv');
+  btn.addEventListener('click', function(){
+    var card = $('pvCard');
+    var full = card.classList.toggle('full');
+    btn.textContent = full ? '✕ 收起' : '⤢ 放大看';
+    // 预览用的是百分比宽度，尺寸变了不用重算，但留一个钩子方便以后改
+    renderPreview();
+  });
+}
+
+/* ---------- 绑定 ---------- */
+function bindAll(){
+  $('drop').addEventListener('click', function(){ if(!busy) $('file').click(); });
+  /* ★ 选完立刻清空 value：否则同一张图再选一次不会触发 change（用户踩过） */
+  $('file').addEventListener('change', function(){ addFiles(this.files); this.value = ''; });
+  var drop = $('drop');
+  ['dragenter', 'dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave', 'drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(busy) return;
+    var dt = e.dataTransfer;
+    if(dt && dt.files && dt.files.length) addFiles(dt.files);
+  });
+
+  $('clear').addEventListener('click', function(){ if(!busy) clearAll(); });
+  $('moveLeft').addEventListener('click', function(){ moveSelected(-1); });
+  $('moveRight').addEventListener('click', function(){ moveSelected(1); });
+  $('removeOne').addEventListener('click', function(){ var it = selItem(); if(it) removeItem(it.id); });
+
+  $('thumbs').addEventListener('click', function(e){
+    var del = e.target.closest ? e.target.closest('[data-del]') : null;
+    if(del){ removeItem(+del.getAttribute('data-del')); return; }
+  });
+
+  ['cols', 'align', 'bgMode'].forEach(function(id){
+    $(id).addEventListener('click', function(e){
+      var b = e.target.closest ? e.target.closest('button[data-v]') : null;
+      if(!b) return;
+      setSeg(id, b.getAttribute('data-v'));
+      syncRangeLabels();
+      /* 只改样式不重建 DOM：宽度是百分比、底色/对齐是容器属性，
+         DOM 结构没变就不该把 base64 重新解析一遍（几十 MB 时会卡） */
+      restylePreview();
+      updatePvMeta();
+      saveSoon();
+    });
+  });
+  ['gap', 'radius'].forEach(function(id){
+    $(id).addEventListener('input', function(){ syncRangeLabels(); restylePreview(); });
+    $(id).addEventListener('change', function(){ saveSoon(); });
+  });
+  $('bgColor').addEventListener('input', function(){ restylePreview(); });
+  $('bgColor').addEventListener('change', function(){ saveSoon(); });
+
+  $('copy').addEventListener('click', function(){ if(!busy) copyLayout(); });
+  $('fallback').addEventListener('click', function(){ if(!busy) showFallback(); });
+  $('exportHtml').addEventListener('click', function(){ if(!busy) exportHtml(); });
+  $('compress').addEventListener('click', function(){ if(!busy) compressAll(); });
+  $('restore').addEventListener('click', function(){ if(!busy) restoreOrig(); });
+  $('jpgQ').addEventListener('input', function(){ $('jpgQ-v').textContent = $('jpgQ').value; });
+
+  $('resetOpts').addEventListener('click', function(){
+    var d = defaultOpt();
+    setSeg('cols', d.cols); setSeg('align', d.align); setSeg('bgMode', 'transparent');
+    $('gap').value = d.gap; $('radius').value = d.radius;
+    $('bgColor').value = '#f6f7fb';
+    /* ⚠️ 这里**只清不存**：forgetSettings 之后如果又 saveSoon，等于把刚清掉的默认值写回去。
+       虽然写回默认值结果一样，但"恢复默认 → 重开"应该走"没有存过设置"这条路，语义干净。 */
+    forgetSettings();
+    syncRangeLabels();
+    renderPreview();
+    showIn('msg', 'msgtxt', 'info', '版式与外观已恢复出厂设置。');
+  });
+
+  document.querySelectorAll('[data-dismiss]').forEach(function(b){
+    b.addEventListener('click', function(){ hide(b.getAttribute('data-dismiss')); });
+  });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && $('pvCard').classList.contains('full')) $('expandPv').click();
+  });
+
+  bindThumbDrag();
+  bindExpand();
+}
+
+/* ---------- 启动 ---------- */
+restore();
+syncRangeLabels();
+bindAll();
+renderAll();
+
+/* 给自检 / 冒烟用的口子（生产环境不依赖它） */
+window.__wxTest = {
+  items: function(){ return items; },
+  addFiles: addFiles,
+  removeItem: removeItem,
+  clearAll: clearAll,
+  moveSelected: moveSelected,
+  selectItem: function(id){ selId = id; renderAll(); },
+  opt: readOpt,
+  html: buildHtmlNow,
+  plain: function(){ return plainTextOf(coreItems()); },
+  doc: function(){ return docForExport(buildHtmlNow(), '公众号配图排版'); },
+  setRange: function(id, v){ $(id).value = v; syncRangeLabels(); },
+  setSeg: setSeg,
+  saveFallback: showFallback,
+  fallbackHtml: function(){ return $('fallbackBox').innerHTML; },
+  resetOpts: function(){ $('resetOpts').click(); },
+  copy: copyLayout,
+  exportHtml: exportHtml,
+  busy: function(){ return busy; },
+  budget: function(){ return budgetOf(items); },
+  budgetText: function(){ return $('budgetText').textContent; },
+  compress: compressAll,
+  restoreOrig: restoreOrig,
+  canCompress: canCompressAny,
+  hasCompressed: hasCompressed,
+  compressOne: compressStillToJpeg,
+  setJpgQ: function(v){ $('jpgQ').value = v; $('jpgQ-v').textContent = v; }
+};
+
+})();
+</script>
+</body>
+</html>

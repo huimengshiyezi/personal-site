@@ -9,6 +9,7 @@
 :root{
   --bg:#f6f7fb; --card:#fff; --line:#e4e7f0; --text:#1f2340; --muted:#7c819a;
   --brand:#3f6ef0; --brand2:#eaf1ff; --ok:#1f9d55; --warn:#b7791f; --err:#d64545;
+  --hint:#5b6079;    /* 占位提示的文字色：比 --muted(#7c819a) 深一档，浅底上才看得清 */
   --rl:14px;
   --pad:14px;        /* 页面左右内边距：吸顶标签栏靠它做"通栏"（左右负边距） */
   --bar:62px;        /* 吸顶标签栏的高度：右列 sticky 的 top 要避开它 */
@@ -147,7 +148,19 @@ h1{font-size:19px;margin:0 0 4px;display:flex;align-items:center;gap:8px;flex-wr
    不能被 max-width:100% 又缩回去 —— 那样"放大看看"就成了假按钮。 */
 .stage canvas{display:block;margin:0 auto;max-width:none;height:auto;touch-action:none;user-select:none;-webkit-user-select:none}
 .stage .ph{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:24px 14px;
-  color:var(--muted);font-size:12.5px;line-height:1.8;background:rgba(255,255,255,.72);text-align:center}
+  color:var(--hint);font-size:13px;line-height:1.8;background:rgba(255,255,255,.72);text-align:center}
+/* ==========================================================================
+   ★ 空状态（还没图 / 还没选图）
+   --------------------------------------------------------------------------
+   根因：占位提示是 position:absolute → **不贡献高度** → 舞台没内容时只剩 padding 那点高度
+   （手机实测 14px），再被 overflow:auto 一裁，提示就只剩半行 + 一条滚动条。
+   修法：空的时候把提示放回**普通流**、关掉 overflow、给一个撑得住的最小高度。
+   `.empty` 由 renderStitch / renderSplit 切换；有图时自动撤掉，滚动行为回到 auto。
+   ⚠️ 手机断点里 `.card-pv .stage{min-height:0}` 的优先级和 `.stage.empty` 一样、
+      但它在文件后面 —— 所以手机那段还要再写一遍 `.card-pv .stage.empty`。
+   ========================================================================== */
+.stage.empty{overflow:visible;min-height:120px;background:#fbfcff;border-style:dashed}
+.stage.empty .ph{position:static;inset:auto;background:transparent}
 .sizebox{background:#f8f9fd;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:9px;font-size:12.5px;color:var(--muted);line-height:1.9}
 .sizebox b{color:var(--text)}
 .sizebox .big{font-size:17px;color:var(--brand);font-weight:700;letter-spacing:.3px}
@@ -209,6 +222,10 @@ footer{color:var(--muted);font-size:12px;text-align:center;padding:16px 0 22px}
   .card-pv{position:sticky;top:var(--bar);z-index:20;min-height:140px;
     box-shadow:0 10px 16px -14px rgba(31,35,64,.5)}
   .card-pv .stage{max-height:max(28vh,150px);min-height:0}
+  /* ★ 空状态把 min-height 抢回来：上面那条 min-height:0 是为了让"有图时"能压到 28vh，
+     但空的时候没有东西撑高度 —— 不写这一条，手机上空舞台就塌成 14px（这轮真机就是这么露馅的）。
+     两条选择器优先级相同，靠"写在后面"取胜。 */
+  .card-pv .stage.empty{min-height:120px;max-height:none}
   .card-pv h2{margin-bottom:4px}
   /* 手机上手更粗：分割线手柄与触摸区都要放大（手指点不中等于没有） */
   .lines .ln{border-top-width:2px;height:0}
@@ -1331,12 +1348,17 @@ function renderStitch(){
   var safe = stitchSafe();
   if(!sizes.length){
     cv.width = 1; cv.height = 1; cv.style.width = ''; cv.style.height = '';
+    /* ★ 空状态要打上 .empty：占位提示回到普通流、舞台取消 overflow:auto 并撑到 120px。
+       不打的话，占位提示是 absolute（不贡献高度）→ 舞台塌成 padding 那么高（手机上是 14px），
+       再被 overflow:auto 一裁，提示就只剩半行 + 一条滚动条。 */
+    $('stitchStage').classList.add('empty');
     $('stitchph').classList.remove('hidden');
     $('stitchSize').innerHTML = '还没有可以拼的图。先在上面加两张试试。';
     $('stitchGoalHint').classList.remove('hidden');
     syncButtons();
     return;
   }
+  $('stitchStage').classList.remove('empty');
   $('stitchph').classList.add('hidden');
   var opt = stitchOpt();
   var real = stitchLayout(sizes, opt, qualityScale());
@@ -1511,12 +1533,16 @@ function renderSplit(){
   if(!it){
     $('splitLines').innerHTML = '';
     cv.width = 1; cv.height = 1; cv.style.width = ''; cv.style.height = '';
+    /* ★ 切分这边"有内容"= 选中了一张图。没选中同样要打 .empty，
+       否则占位提示 absolute 不贡献高度、舞台塌成一条缝（手机实测 15px）。 */
+    $('splitStage').classList.add('empty');
     $('splitph').classList.remove('hidden');
     $('splitSize').innerHTML = '还没有选中的图片。';
     $('splitWhich').textContent = '还没有选中图片';
     syncButtons();
     return;
   }
+  $('splitStage').classList.remove('empty');
   $('splitph').classList.add('hidden');
   var fr = currentFrame();
   // 分割线按比例跟着走（换图 / 换画幅时不至于指到画面外）
