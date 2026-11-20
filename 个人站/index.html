@@ -365,11 +365,11 @@ footer a{color:var(--accent)}
     <div id="toolGrid">
 
       <!-- ---------- 图片处理 ---------- -->
-      <section class="tgroup">
-        <h3 class="tgroup-h">图片处理<span class="cnt">7</span></h3>
+            <section class="tgroup">
+        <h3 class="tgroup-h">工作台<span class="cnt">2</span></h3>
         <div class="grid">
 
-          <div class="card tool" data-id="img-desk" data-live="1" data-href="tools/img-desk.html"
+<div class="card tool" data-id="img-desk" data-live="1" data-href="tools/img-desk.html"
            data-kw="图片 批处理 工作台 六合一 裁剪 改尺寸 旋转 水印 转格式 压缩 改名 平台尺寸 速查 拼接 拆分 九宫格 GIF 视频转GIF 压缩 zip">
         <button class="star" type="button" aria-label="收藏">☆</button>
         <span class="tag">图片</span>
@@ -381,7 +381,7 @@ footer a{color:var(--accent)}
         </span>
       </div>
 
-          <div class="card tool" data-id="gzh-design" data-live="1" data-href="tools/gzh-design.html"
+<div class="card tool" data-id="gzh-design" data-live="1" data-href="tools/gzh-design.html"
            data-kw="公众号 排版 文章 飞书 飞书文档 markdown 封面 2.35:1 配图 横排 多图 水印 描边 阴影 一键复制 编辑器">
         <button class="star" type="button" aria-label="收藏">☆</button>
         <span class="tag">排版</span>
@@ -392,7 +392,34 @@ footer a{color:var(--accent)}
           <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
         </span>
       </div>
-      <div class="card tool" data-id="img-batch" data-live="1" data-href="tools/img-batch.html"
+
+        </div>
+      </section>
+
+<section class="tgroup">
+        <h3 class="tgroup-h">AI 创作<span class="cnt">1</span></h3>
+        <div class="grid">
+
+          <div class="card tool" data-id="prompt-builder" data-live="1" data-href="tools/prompt-builder.html"
+               data-kw="AI 生图 提示词 prompt 绘画 组合 生成 写法 词库 槽位 装配 向导 范本 感受 映射 光位 景别 画幅 风格 影调">
+            <span class="tag">绘画</span>
+            <h3>AI 生图提示词装配台</h3>
+            <p><b>向导模式</b>：挑范本 → 答 5 问 → 出稿（「温柔」这类感受会自动翻成柔光 / 低饱和 / 浅景深等具体写法）· 2048 条词库 · 另有 9 步装配的高级模式 · 术语悬停解释与冲突校验，一键复制成稿。</p>
+            <span class="card-foot">
+              <span class="go">打开工具 →</span>
+              <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
+            </span>
+          </div>
+
+
+        </div>
+      </section>
+
+<section class="tgroup">
+        <h3 class="tgroup-h">图片处理<span class="cnt">6</span></h3>
+        <div class="grid">
+
+                          <div class="card tool" data-id="img-batch" data-live="1" data-href="tools/img-batch.html"
                data-kw="图片 批量 批处理 裁剪 旋转 翻转 改尺寸 缩放 转格式 压缩 加水印 水印 元数据 目标体积 zip 打包">
             <span class="tag">图片</span>
             <h3>图片批处理</h3>
@@ -461,8 +488,7 @@ footer a{color:var(--accent)}
         </div>
       </section>
 
-      <!-- ---------- 公众号 · 自媒体配图 ---------- -->
-      <section class="tgroup">
+<section class="tgroup">
         <h3 class="tgroup-h">公众号 · 自媒体配图<span class="cnt">4</span></h3>
         <div class="grid">
 
@@ -513,26 +539,6 @@ footer a{color:var(--accent)}
         </div>
       </section>
 
-      <!-- ---------- AI 创作 ---------- -->
-      <section class="tgroup">
-        <h3 class="tgroup-h">AI 创作<span class="cnt">1</span></h3>
-        <div class="grid">
-
-          <div class="card tool" data-id="prompt-builder" data-live="1" data-href="tools/prompt-builder.html"
-               data-kw="AI 生图 提示词 prompt 绘画 组合 生成 写法 词库 槽位 装配 向导 范本 感受 映射 光位 景别 画幅 风格 影调">
-            <span class="tag">绘画</span>
-            <h3>AI 生图提示词装配台</h3>
-            <p><b>向导模式</b>：挑范本 → 答 5 问 → 出稿（「温柔」这类感受会自动翻成柔光 / 低饱和 / 浅景深等具体写法）· 2048 条词库 · 另有 9 步装配的高级模式 · 术语悬停解释与冲突校验，一键复制成稿。</p>
-            <span class="card-foot">
-              <span class="go">打开工具 →</span>
-              <button class="link-btn" type="button" data-copy aria-label="复制这个工具的直达链接">复制链接</button>
-            </span>
-          </div>
-
-
-        </div>
-      </section>
-
     </div>
     <p class="empty" id="empty" hidden>没有找到工具，换个词试试</p>
   </section>
@@ -564,10 +570,11 @@ footer a{color:var(--accent)}
 
   /* 各工具最后一次更新的日期（来自各仓库最后一次提交，改工具时同步改这里） */
   var UPDATED = {
+    'img-desk': '2026-11-20', 'gzh-design': '2026-11-16',
     'img-batch': '2026-10-14', 'img-compress': '2026-09-11', 'img-crop': '2026-10-14',
     'img-stitch': '2026-10-19', 'watermark': '2026-10-14', 'gif-tool': '2026-09-04',
     'wechat-layout': '2026-10-19', 'cover-tool': '2026-10-14', 'size': '2026-10-14',
-    'prompt-builder': '2026-10-14'
+    'prompt-builder': '2026-10-14', 'wechat-md': '2026-11-13'
   };
   (function paintUpdated(){
     var now = Date.now();
